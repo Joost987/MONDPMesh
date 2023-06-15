@@ -77,17 +77,20 @@ class TwoBodyParticlelist(Particlelist):
         self.m1=m1
         self.m2=m2
 
-    def Body2MONDacc(self):
+    def Analyticalacc(self):
         particle1=self.list[0]
         particle2=self.list[1]
         Force=Body2MOND(particle1[1:4],particle2[1:4],particle1[0],particle2[0])*(particle2[1:4]-particle1[1:4])/np.linalg.norm((particle1[1:4]-particle2[1:4]))
         return [1/particle1[0]*Force,-1/particle2[0]*Force]
 
-    def EGrav2Body(self):
+    def EPot(self):
         return 2/3*np.sqrt(G*a0)*((self.m1+self.m2)**(3/2)-self.m1**(3/2)-self.m2**(3/2))*np.log(np.linalg.norm(self.list[0,1:4]-self.list[1,1:4]))
 
-    def ETot2Body(self):
-        return self.EGrav2Body()+self.Ekin()
+    def ETot(self):
+        return self.EPot()+self.Ekin()
+    
+    def AngMom(self):
+        return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels//2]*3),self.list[:,4:7]))
     
     def TimeSim(self,T,dt,iterlength):
         posmat=np.zeros([len(self.list),T,3])
@@ -112,7 +115,7 @@ class TwoBodyParticlelist(Particlelist):
 
             AngMat[t,:]=self.AngMom()
             MomMat[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EMat[t]=self.ETot2Body()
+            EMat[t]=self.ETot()
         
             accold=accnew
             self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
@@ -132,11 +135,11 @@ class TwoBodyParticlelist(Particlelist):
 
             AngMat2[t,:]=self.AngMom()
             MomMat2[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EMat2[t]=self.ETot2Body()
+            EMat2[t]=self.ETot()
         
             accold=accnew
             self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
-            accnew=np.array(self.Body2MONDacc())
+            accnew=np.array(self.Analyticalacc())
             self.list[:,4:7]+=(accold+accnew)*0.5*dt*cellleninv
 
         return posmat,vecmat,AngMat,MomMat,EMat,posmat2,vecmat2,AngMat2,MomMat2,EMat2
@@ -173,6 +176,9 @@ class RingParticlelist(Particlelist):
         self.N=N
         self.m=m
     
+    def AngMom(self):
+        return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels//2]*3),self.list[:,4:7]))
+    
     def RingMONDacc(self):
         M=self.m0+self.N*self.m
         rhat=-1*np.transpose(np.transpose(self.list[:-1,1:4]-self.list[-1,1:4])/np.linalg.norm(self.list[:-1,1:4]-self.list[-1,1:4],axis=1))   
@@ -190,31 +196,87 @@ class IsoThermalParticlelist(Particlelist):
         xi=np.random.uniform(low=-1,high=1,size=N)
 
 
-        rvec=np.transpose(np.array([[halfpixels//2]*3]*N))+b*(1/np.sqrt(eta1)-1)**(-2/3)*np.array([(np.sqrt(1-xi**2))*np.cos(zeta1),(np.sqrt(1-xi**2))*np.sin(zeta1),xi])
+        rvec=np.transpose(np.array([[halfpixels]*3]*N))+b*(1/np.sqrt(eta1)-1)**(-2/3)*np.array([(np.sqrt(1-xi**2))*np.cos(zeta1),(np.sqrt(1-xi**2))*np.sin(zeta1),xi])
         vvec=(np.array([np.sqrt(-1/1.5*self.v2*np.log(eta2))*np.cos(zeta2),np.sqrt(-1/1.5*self.v2*np.log(eta2))*np.sin(zeta2),np.sqrt(-1/1.5*self.v2*np.log(eta3))*np.cos(zeta3)]))
         particlelist=[[m,rvec[0,i],rvec[1,i],rvec[2,i],vvec[0,i],vvec[1,i],vvec[2,i]] for i in range(np.shape(rvec)[1])]
 
         particlelist2=[]
         for part in particlelist:
 
-            if np.abs(part[1])<128 and np.abs(part[2])<128 and np.abs(part[3])<128:
+            if np.abs(part[1])<2*halfpixels-4 and np.abs(part[2])<2*halfpixels-4 and np.abs(part[3])<2*halfpixels-4:
                 particlelist2.append(part)
 
         particlelist=np.array(particlelist2)
         self.list=particlelist
 
-    def IsoMONDacc(self):
+    def Analyticalacc(self):
         rvec=self.list[:,1:4]
-        rvec=rvec-np.array([halfpixels//2,halfpixels//2,halfpixels//2])
+        rvec=rvec-np.array([halfpixels,halfpixels,halfpixels])
 
         r=np.linalg.norm(rvec,axis=np.where(np.array(np.shape(rvec))==3)[0][0]) #The axis expression makes sure it takes the norm at the axis where rvec has 3 components
         return -rvec*np.transpose(np.array([np.sqrt(G*self.M*a0/(self.b**3*r))/(1+(r/self.b)**(3/2))]*3))*cellleninv
     
-    def EGravIsoMond(self):
+    def EPot(self):
         return 2/3*np.sqrt(G*self.m*a0)*self.m/self.N*np.sum(np.log(1+(np.linalg.norm(self.list[:,1:4]-np.array([halfpixels//2]*3),axis=1)/self.b)**(3/2)))
     
     def ETot(self):
-        return self.Ekin()+self.EGravIsoMond()
+        return self.Ekin()+self.EPot()
+    
+    def AngMom(self):
+        return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels]*3),self.list[:,4:7]))
+    
+    
+    def TimeSim(self,T,dt,iterlength):
+        posmat=np.zeros([len(self.list),T,3])
+        vecmat=np.zeros([len(self.list),T,3])
+
+        posmat2=np.zeros([len(self.list),T,3])
+        vecmat2=np.zeros([len(self.list),T,3])
+
+        MomMat=np.zeros([T,3])
+        AngMat=np.zeros([T,3])
+        EMat=np.zeros([T])
+
+        MomMat2=np.zeros([T,3])
+        AngMat2=np.zeros([T,3])
+        EMat2=np.zeros([T])        
+
+        accnew=self.UpdateAccsMOND(iterlen=4)
+        for t in range(T):
+            
+            posmat[:,t,:]=self.list[:,1:4]
+            vecmat[:,t,:]=self.list[:,4:7]
+
+            AngMat[t,:]=self.AngMom()
+            MomMat[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
+            EMat[t]=self.ETot()
+        
+            accold=accnew
+            self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
+            try:
+                accnew=self.UpdateAccsMOND(iterlen=iterlength)
+            except: 
+                break
+            self.list[:,4:7]+=(accold+accnew)*0.5*dt*cellleninv
+
+        self.list[:,1:4]=posmat[:,0,:]
+        self.list[:,4:7]=vecmat[:,0,:] 
+        
+        accnew=np.array(self.Body2MONDacc())
+        for t in range(T):
+            posmat2[:,t,:]=self.list[:,1:4]
+            vecmat2[:,t,:]=self.list[:,4:7]
+
+            AngMat2[t,:]=self.AngMom()
+            MomMat2[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
+            EMat2[t]=self.ETot()
+        
+            accold=accnew
+            self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
+            accnew=np.array(self.Analyticalacc())
+            self.list[:,4:7]+=(accold+accnew)*0.5*dt*cellleninv
+
+        return posmat,vecmat,AngMat,MomMat,EMat,posmat2,vecmat2,AngMat2,MomMat2,EMat2
 
 
 
