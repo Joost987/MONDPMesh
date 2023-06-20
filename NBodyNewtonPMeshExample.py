@@ -76,7 +76,7 @@ class Particlelist:
 
             AngMat[t,:]=self.AngMom()
             MomMat[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EkinMat[t]=self.Ekin(self.list)
+            EkinMat[t]=self.Ekin()
         
             accold=accnew
             self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
@@ -285,7 +285,7 @@ class IsoThermalParticlelist(Particlelist):
         self.list[:,1:4]=posmat[:,0,:]
         self.list[:,4:7]=vecmat[:,0,:] 
         
-        accnew=np.array(self.Body2MONDacc())
+        accnew=np.array(self.Analyticalacc())
         for t in range(T):
             posmat2[:,t,:]=self.list[:,1:4]
             vecmat2[:,t,:]=self.list[:,4:7]
@@ -685,7 +685,6 @@ a0=1
 
 
 particlelist=TwoBodyCircParticlelist(10**20,1.5*10**20,10,0)
-
 #%%
 
 K=DiscrKvect(np.arange(-halfpixels,halfpixels)[:,None,None])
