@@ -150,7 +150,7 @@ class TwoBodyParticlelist(Particlelist):
         self.list[:,1:4]=posmat[:,0,:]
         self.list[:,4:7]=vecmat[:,0,:] 
         
-        accnew=np.array(self.Body2MONDacc())
+        accnew=np.array(self.Analyticalacc())
         for t in range(T):
             posmat2[:,t,:]=self.list[:,1:4]
             vecmat2[:,t,:]=self.list[:,4:7]
@@ -734,8 +734,8 @@ plt.xlabel("$x$ (pixels)")
 plt.ylabel("$y$ (pixels)")
 plt.show()
 
-plt.plot(Emat)
-plt.plot(Emat2)
+plt.plot(EMat)
+plt.plot(EMat2)
 plt.ylabel("Energy")
 plt.xlabel("timesteps")
 plt.show()
