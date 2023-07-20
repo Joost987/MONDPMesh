@@ -14,7 +14,7 @@ Note: One error that has been found is that the information of the last time ste
 
 
 Required libraries:
-Numpy, math, itertools, these are all included in base Python
+Numpy, math, itertools, these are all included in base Python.
 Pyfftw, which needs the C FFTW library. Its documentation can be found in https://pyfftw.readthedocs.io/en/latest/. 
 
 
