@@ -9,6 +9,8 @@ The Clean file contains the complete code without anything else. You can create 
 
 Please message me if you find any errors or bugs.
 
+Note: One error that has been found is that the information of the last time step is not saved.
+
 
 
 Required libraries:
