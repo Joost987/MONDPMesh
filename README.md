@@ -1,7 +1,8 @@
 # MONDPMesh
 Python N-body code made for MOND simulations.
 
-This code uses an altered particle mesh method to solve the Poisson equation of the AQUAL version of MOND. It was made for my Bachelor's thesis. The thesis can be found at https://repository.tudelft.nl/.
+This code uses an altered particle mesh method to solve the Poisson equation of the AQUAL version of MOND. It was made for my Bachelor's thesis. The thesis can be found at (http://resolver.tudelft.nl/uuid:ad94e143-0ce4-4b17-8a72-54ab9f656236).
+
 
 The example file contains the complete code together with an example simulation of a two body system. This file can be immediately run when the required libraries are installed, and will plot the trajectories of the bodies with the total energy. Both of these are plotted together with exact formula for these quantities. 
 
