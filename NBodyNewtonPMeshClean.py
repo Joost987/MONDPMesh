@@ -13,11 +13,16 @@ class Particlelist:
         #particlelist object should for each particle contain a list with its mass, then the 3 components of its position
         #then the 3 components of its velocity, so [m,rx,ry,rz,vx,vy,vz].
         self.list=np.array(particlelist)
+        self.EPot=0
 
     def Ekin(self): 
         return np.dot(1/2*self.list[:,0],np.diagonal(self.list[:,4:7]@np.transpose(self.list[:,4:7])))*celllen**2 #take the dot product between 1/2*masses and the velocities squared. 
         #the self.list[:,4:7]@np.transpose(self.list[:,4:7]) part creates a matrix with all of the velocities of each particle multiplied by each other
         #we only want the velocities of each particle squared, so we take the diagonal of this. 
+
+    def ETot(self):
+        return self.Ekin()+self.EPot
+        #Note that EPot can only be calculated by UpdateAccsMOND, as the potential is needed.
         
     def AngMom(self):
         return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4],self.list[:,4:7])) #angular momentum with [0,0,0] as origin.
@@ -39,7 +44,7 @@ class Particlelist:
 
         density=AssignMassGauss(self.list,M,a=sigma)
         densityfft=execfftw(fft_object, inputarr, outputarr, density)
-        del density
+        #del density
 
         potNDmat=CalcPot(densityfft)
         del densityfft
@@ -58,6 +63,8 @@ class Particlelist:
         potMONDmat=np.imag(execfftw(ifft_object,outputarr,inversearr,potMONDmatfft))
         del potMONDmatfft
         accMONDmat=CalcAccMat(potMONDmat)
+        self.EPot=np.sum(potMONDmat*density)
+        del density
         del potMONDmat
 
 
@@ -72,6 +79,7 @@ class Particlelist:
         MomMat=np.zeros([T,3])
         AngMat=np.zeros([T,3])
         EkinMat=np.zeros([T])
+        EMat=np.zeros([T])
 
         accnew=self.UpdateAccsMOND(iterlen=4,regime=regime)
 
@@ -83,6 +91,7 @@ class Particlelist:
             AngMat[t,:]=self.AngMom()
             MomMat[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
             EkinMat[t]=self.Ekin()
+            EMat[t]=self.ETot()
         
             accold=accnew
             self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
@@ -93,7 +102,8 @@ class Particlelist:
                 #the particles will enter 
                 break
             self.list[:,4:7]+=(accold+accnew)*0.5*dt*cellleninv
-        return posmat,vecmat,AngMat,MomMat,EkinMat
+        
+        return posmat,vecmat,AngMat,MomMat,EkinMat, EMat
     
 
 #Now different classes of physical systems are made. These are specific systems of which analytical solutions in deep MOND are known.
@@ -114,11 +124,8 @@ class TwoBodyParticlelist(Particlelist): #Arbitary two body system
         Force=Body2MOND(particle1[1:4],particle2[1:4],particle1[0],particle2[0])*(particle2[1:4]-particle1[1:4])/np.linalg.norm((particle1[1:4]-particle2[1:4]))
         return [1/particle1[0]*Force,-1/particle2[0]*Force]
 
-    def EPot(self):
+    def EPotAna(self):
         return 2/3*np.sqrt(G*a0)*((self.m1+self.m2)**(3/2)-self.m1**(3/2)-self.m2**(3/2))*np.log(np.linalg.norm(self.list[0,1:4]-self.list[1,1:4]))
-
-    def ETot(self):
-        return self.EPot()+self.Ekin()
     
     def AngMom(self):
         return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels//2]*3),self.list[:,4:7]))
@@ -167,7 +174,7 @@ class TwoBodyParticlelist(Particlelist): #Arbitary two body system
 
             AngMat2[t,:]=self.AngMom()
             MomMat2[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EMat2[t]=self.ETot()
+            EMat2[t]=self.Ekin()+self.EPotAna()
         
             accold=accnew
             self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
@@ -248,11 +255,9 @@ class IsoThermalParticlelist(Particlelist): #Isothermal sphere of N particles in
         r=np.linalg.norm(rvec,axis=np.where(np.array(np.shape(rvec))==3)[0][0]) #The axis expression makes sure it takes the norm at the axis where rvec has 3 components
         return -rvec*np.transpose(np.array([np.sqrt(G*self.m*a0/(self.b**3*r))/(1+(r/self.b)**(3/2))]*3))*cellleninv
     
-    def EPot(self):
+    def EPotAna(self):
         return 2/3*np.sqrt(G*self.m*a0)*self.m/self.N*np.sum(np.log(1+(np.linalg.norm(self.list[:,1:4]-np.array([halfpixels]*3),axis=1)/self.b)**(3/2)))
     
-    def ETot(self):
-        return self.Ekin()+self.EPot()
     
     def AngMom(self):
         return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels]*3),self.list[:,4:7]))
@@ -302,7 +307,7 @@ class IsoThermalParticlelist(Particlelist): #Isothermal sphere of N particles in
 
             AngMat2[t,:]=self.AngMom()
             MomMat2[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EMat2[t]=self.ETot()
+            EMat2[t]=self.Ekin()+self.EPotAna()
         
             accold=accnew
             self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
@@ -505,7 +510,7 @@ def AssignAccsGauss(accmat,particlelist2,N,a=1):
         cellrange=tuple(np.arange(-N,N)+1)
         for j in itert.product(cellrange,cellrange,cellrange):
             cellcoords=(int(x)+j[0],int(y)+j[1],int(z)+j[2]) 
-            weight=weight=oversqrt2pi3*np.exp(-((cellcoords[0]-x)**2+(cellcoords[1]-y)**2+(cellcoords[2]-z)**2)/(2*a**2))
+            weight=oversqrt2pi3*np.exp(-((cellcoords[0]-x)**2+(cellcoords[1]-y)**2+(cellcoords[2]-z)**2)/(2*a**2))
             accparts[k,:]+=(accmat[:,cellcoords[0],cellcoords[1],cellcoords[2]])*weight
     a3inv=a**(-3)
     return accparts*a3inv
