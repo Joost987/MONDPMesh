@@ -10,8 +10,7 @@
 #include <fstream>
 
 using namespace std;
-// g++ -I C:\Users\jvden\Downloads\eigen-master\eigen-master -I C:\Users\jvden\Downloads\FFTW\** CPPCode.cpp
-// g++ -o CPPCode CPPCode.cpp -I C:\Users\jvden\Downloads\eigen-master\eigen-master -I C:/Users/jvden/Downloads/FFTW/fftw-3.3.5-dll64  -L"C:/Users/jvden/Downloads/FFTW/fftw-3.3.5-dll64" -lfftw3-3 -lm
+
 
 const int halfpixels=64;
 float celllen= 1*std::pow(10,10);
@@ -817,16 +816,7 @@ int main(){
     pmat << std::pow(10,20), 32.1, 36.7, 32.3, 0, 1.5/2.5*v, 0,
           1.5*std::pow(10,20), 34.1, 36.7, 32.3, 0, -1/2.5*v, 0;
     Particlelist plist(pmat);
-   Eigen::Vector3f a;
-    Eigen::Vector3f b;
-    a<<1,0,0;
-    b<<0,2,0;
 
- 
-
-  //  std::cout<<EuclidDist(a,b);
-   // std::cout<<plist.Ekin()<<" ";
-    //std::cout<<plist.AngMom()<<" ";
  
 
     fftw_complex* in;
@@ -840,8 +830,7 @@ int main(){
     fftw_plan pbwd;
     fftw_plan pfwdvecH;
     fftw_plan pbwdvecH;
-    //fftw_plan pfwdvecgM2;
-  //  fftw_plan pbwdvecgM2;
+
 
     int size[] = { 2 * halfpixels,2 * halfpixels,2 * halfpixels };
 
@@ -851,14 +840,7 @@ int main(){
     pfwdvecH = fftw_plan_many_dft(3, size, 3, invecH,NULL,3,1, invecH, NULL, 3, 1, FFTW_FORWARD, FFTW_MEASURE);
     pbwdvecH = fftw_plan_many_dft(3, size, 3, invecH, NULL, 3, 1, invecH, NULL, 3, 1, FFTW_BACKWARD, FFTW_MEASURE);
 
-   // pfwdvecgM2 = fftw_plan_many_dft(3, size, 3, invecgM2, NULL, 3, 1, invecgM2, NULL, 3, 1, FFTW_FORWARD, FFTW_MEASURE);
-    //pbwdvecgM2 = fftw_plan_many_dft(3, size, 3, invecgM2, NULL, 3, 1, invecgM2, NULL, 3, 1, FFTW_BACKWARD, FFTW_MEASURE);
 
-
- 
-    //Eigen::Matrix<float, Eigen::Dynamic, 3> accparts;
-   // accparts = plist.UpdateAccsMOND(4, 1, 4, 0, in, invecH, pfwd, pbwd, pfwdvecH, pbwdvecH);
-   // std::cout << "accparts " << accparts;
     plist.TimeSim(86400, 4, 0, in, invecH, pfwd, pbwd, pfwdvecH, pbwdvecH);
     return 0;
 }
