@@ -29,7 +29,7 @@ const float c = 4 * pi * G;
 const float a0 = 1;
 
 const int T = 4;
-const int N = 1;
+const int N = 2;
 
 class Particlelist;
 class FixedSizeMat2;
@@ -785,9 +785,9 @@ int main() {
 
     float v = 2 * 5.567090223714246e-06;
     Eigen::Matrix<float, N, 7> pmat;
-  //  pmat << std::pow(10, 21), 32.1, 36.7, 32.3, 0, 1.5 / 2.5 * v, 0,
-    //    1.5 * std::pow(10, 20), 36.1, 36.7, 32.3, 0, -1 / 2.5 * v, 0;
-   // Particlelist plist(pmat);
+    pmat << std::pow(10, 21), 32.1, 36.7, 32.3, 0, 1.5 / 2.5 * v, 0,
+    1.5 * std::pow(10, 20), 36.1, 36.7, 32.3, 0, -1 / 2.5 * v, 0;
+   Particlelist plist(pmat);
     Eigen::Vector3f a;
     Eigen::Vector3f b;
     a << 1, 0, 0;
@@ -826,18 +826,17 @@ int main() {
 
 
     Eigen::Matrix<float, Eigen::Dynamic, 3> accparts;
-    float sum1=0;
-    int MM=100;
-    std::cout<<"start";
-    for(int i=0;i<MM;++i){
-    
-        pmat<< std::pow(10,21),32+(float) rand()/RAND_MAX,32+(float) rand()/RAND_MAX,32+(float) rand()/RAND_MAX,0,0,0;
-        Particlelist plist(pmat);
-        accparts = plist.UpdateAccsMOND(4, 1, 4, 0, in, invecH, out, outvecH, pfwd, pbwd, pfwdvecH, pbwdvecH);
-        std::cout<<"["<<accparts<<"] , ";
-        sum1+=std::sqrt(accparts(0,0)*accparts(0,0)+accparts(0,1)*accparts(0,1)+accparts(0,2)*accparts(0,2));
-    }
-    std::cout << sum1/(MM *celllen/std::sqrt(G*a0*std::pow(10,21)));
+
+ 
+
+
+
+
+    accparts = plist.UpdateAccsMOND(4, 1, 4, 0, in, invecH, out, outvecH, pfwd, pbwd, pfwdvecH, pbwdvecH);
+    std::cout<<accparts;
+
+
+
    // plist.TimeSim(86400, 4, 0, in, invecH, pfwd, pbwd, pfwdvecH, pbwdvecH);
     return 0;
 }
