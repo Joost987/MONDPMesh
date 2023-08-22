@@ -13,13 +13,13 @@
 using namespace std;
 
 const int halfpixels=128;
-float celllen= 1*std::pow(10,10);
-float cellleninv=1.0/celllen;
-float pi= 3.14159265359;
-float oversqrt2pi=1.0/std::sqrt(2*pi);
-float oversqrt2pi3=std::pow(oversqrt2pi,3);
-float cellvolume=std::pow(celllen,3);
-float cellvolumeinv=1/cellvolume;
+const float celllen= 1*std::pow(10,10);
+const float cellleninv=1.0/celllen;
+const float pi= 3.14159265359;
+const float oversqrt2pi=1.0/std::sqrt(2*pi);
+const float oversqrt2pi3=std::pow(oversqrt2pi,3);
+const float cellvolume=std::pow(celllen,3);
+const float cellvolumeinv=1/cellvolume;
 int scalarsize[3]= {halfpixels*2,halfpixels*2,halfpixels*2};
 
 const float kstep = pi / (halfpixels * celllen);
