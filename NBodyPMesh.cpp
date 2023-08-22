@@ -10,8 +10,6 @@
 #include <math.h>
 #include <fstream>
 
-//g++ NBodyPMesh.cpp -I/mnt/c/Users/jvden/Downloads/eigen-master/eigen-master -lfftw3f -I/usr/local/include -o NBodyPMeshFFTW
-//g++ -o NBodyPMeshMKL NBodyPMesh.cpp -I/opt/intel/oneapi/mkl/latest/include -L/opt/intel/oneapi/mkl/latest/lib/intel64 -Wl,-rpath=/opt/intel/oneapi/mkl/latest/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl -I/mnt/c/Users/jvden/Downloads/eigen-master/eigen-master
 using namespace std;
 
 const int halfpixels=128;
