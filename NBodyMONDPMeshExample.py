@@ -396,13 +396,17 @@ def GaussWeight(x,a):
 
 #Find cells in a discrete ball of radius N and make an array of these. 
 def FindBall(N):
-    cellrange=np.array(np.arange(-N,N)+1)
-    ball=list(itert.product(cellrange,cellrange,cellrange))
-    for pos in ball:
-        if pos[0]**2+pos[1]**2+pos[2]**2>N**2:
-            ball.remove(pos)
+    ball=np.array([])
+    for i in range(-N+1,N):
+        for j in range(-N+1,N):
+            for k in range(-N+1,N):
+                if i**2+j**2+k**2<N**2:
+                    
+                    ball=np.append(ball,[i,j,k])
+    ball=np.reshape(ball,(251,3))
     return ball
 ball4=FindBall(4)
+
 
 #Different functions to assign mass from the particles to the grid
 #The first one can use arbitrary weight functions
