@@ -755,16 +755,18 @@ inprodz=np.roll(inprodz,halfpixels,axis=2)
 #First some empty arrays are made for the scalar FFT. These are of data type complex 128. You might be able
 #to use a better data type which speeds up the code, but I could not find how. 
 #After that the FFT's are planned, currently this is done with 6 CPU threads.
-inputarr=pyfftw.empty_aligned(shape,dtype="complex128") 
-outputarr=pyfftw.empty_aligned(shape,dtype="complex128")
-inversearr=pyfftw.empty_aligned(shape,dtype="complex128")
+pyfftw.config.PLANNER_EFFORT="FFTW_MEASURE"
+inputarr=pyfftw.empty_aligned(shape,dtype="complex64") 
+outputarr=pyfftw.empty_aligned(shape,dtype="complex64")
+inversearr=pyfftw.empty_aligned(shape,dtype="complex64")
 fft_object=pyfftw.FFTW(inputarr,outputarr,axes=(0,1,2),threads=6)
 ifft_object=pyfftw.FFTW(outputarr,inversearr,direction="FFTW_BACKWARD",axes=(0,1,2),threads=6)
 
 #Now the same is done for the vector FFT.
 shape2=(3,shape[0],shape[1],shape[2])
-inputarr3=pyfftw.empty_aligned(shape2,dtype="complex128")
-outputarr3=pyfftw.empty_aligned(shape2,dtype="complex128")
-inversearr3=pyfftw.empty_aligned(shape2,dtype="complex128")
+inputarr3=pyfftw.empty_aligned(shape2,dtype="complex64")
+outputarr3=pyfftw.empty_aligned(shape2,dtype="complex64")
+inversearr3=pyfftw.empty_aligned(shape2,dtype="complex64")
 fft_object3=pyfftw.FFTW(inputarr3,outputarr3,axes=(1,2,3),threads=6)
 ifft_object3=pyfftw.FFTW(outputarr3,inversearr3,direction="FFTW_BACKWARD",axes=(1,2,3),threads=6)
+
