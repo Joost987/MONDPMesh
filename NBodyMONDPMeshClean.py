@@ -465,9 +465,9 @@ def AssignMassGaussShape(particlelist,a=1,shape=ball4):  #N is order of the meth
     #For a=1, N>3, a=1.5 N>4, a=2 N>5, a=3 N>8. 
   
     for i in particlelist: 
-        x=round(i[1],0)
-        y=round(i[2],0)
-        z=round(i[3],0)
+        x=i[1]
+        y=i[2]
+        z=i[3]
       
         for j in shape: 
             cellcoords=(int(i[1])+j[0],int(i[2])+j[1],int(i[3])+j[2])
@@ -529,9 +529,9 @@ def AssignAccsGaussShape(accmat,particlelist2,a=1,shape=ball4):
     accparts=np.zeros([len(particlelist2),3])
 
     for k,i in enumerate(particlelist2): 
-        x=round(i[1],0)
-        y=round(i[2],0)
-        z=round(i[3],0)
+        x=i[1]
+        y=i[2]
+        z=i[3]
         
         for j in shape:
             cellcoords=(int(x)+j[0],int(y)+j[1],int(z)+j[2]) 
