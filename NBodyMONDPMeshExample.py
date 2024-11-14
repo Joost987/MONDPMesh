@@ -127,8 +127,8 @@ class Particlelist:
 
 class TwoBodyParticlelist(Particlelist): #Arbitary two body system
     def __init__(self,m1,m2,rvec1,rvec2,vvec1,vvec2):
-        rvec1+=np.array([halfpixels//2]*3)
-        rvec2+=np.array([halfpixels//2]*3)        
+        rvec1+=np.array([halfpixels]*3)
+        rvec2+=np.array([halfpixels]*3)        
         self.list=np.array([[m1,*rvec1,*vvec1],[m2,*rvec2,*vvec2]])
         self.m1=m1
         self.m2=m2
@@ -143,7 +143,7 @@ class TwoBodyParticlelist(Particlelist): #Arbitary two body system
         return 2/3*np.sqrt(G*a0)*((self.m1+self.m2)**(3/2)-self.m1**(3/2)-self.m2**(3/2))*np.log(np.linalg.norm(self.list[0,1:4]-self.list[1,1:4]))
     
     def AngMom(self):
-        return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels//2]*3),self.list[:,4:7]))
+        return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels]*3),self.list[:,4:7]))
     
     def TimeSim(self,T,dt,iterlength,regime=0):
         posmat=np.zeros([len(self.list),T,3])
@@ -206,8 +206,8 @@ class TwoBodyCircParticlelist(TwoBodyParticlelist): #Use this to create a two bo
         v=1/celllen*math.sqrt(2/3*math.sqrt(G*a0*(m1+m2))*(1/(1+math.sqrt(m1/(m1+m2)))+1/(1+math.sqrt(m2/(m1+m2)))))
         rvec1=[m2/M*r*np.cos(phase),m2/M*r*np.sin(phase),0]
         rvec2=[-m1/M*r*np.cos(phase),-m1/M*r*np.sin(phase),0]
-        rvec1+=np.array([halfpixels//2]*3)
-        rvec2+=np.array([halfpixels//2]*3)   
+        rvec1+=np.array([halfpixels]*3)
+        rvec2+=np.array([halfpixels]*3)   
         vvec1=[-m2*v/M*np.sin(phase),m2/M*v*np.cos(phase),0]
         vvec2=[m1*v/M*np.sin(phase),-m1/M*v*np.cos(phase),0]
         self.list=np.array([[m1,*rvec1,*vvec1],[m2,*rvec2,*vvec2]])
