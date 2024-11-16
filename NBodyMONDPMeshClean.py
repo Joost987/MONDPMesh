@@ -1,772 +1,604 @@
-#%%
+import timeit
+import cupyx
+import cupy as cp
+import scipy
 import numpy as np
-import itertools as itert
-import math
 import pyfftw
 
-def FindBall(N):
-    ball=np.array([])
-    for i in range(-N+1,N):
-        for j in range(-N+1,N):
-            for k in range(-N+1,N):
-                if i**2+j**2+k**2<N**2:
-                    
-                    ball=np.append(ball,[i,j,k])
-    ball=np.reshape(ball,(251,3)).astype("int32")
+# Settings
+PI = np.pi
+OVERSQRT2PI = 1 / np.sqrt(2 * PI)
+OVERSQRT2PI3 = OVERSQRT2PI ** 3
+CELLLEN = 3.086e19 *0.45
+PIXELCOUNT = 192
+G = 6.67e-11
+A0 = 1.2e-10
+PIXELCOUNT_X = PIXELCOUNT
+PIXELCOUNT_Y = PIXELCOUNT
+PIXELCOUNT_Z = PIXELCOUNT //3
+K_STEP = PI / (CELLLEN*PIXELCOUNT//2)
+K_STEP_INV = 1/K_STEP
+M_SUN = 1.9891e30
+iterlength = 1
+mond = False
+debug = False
+timing = False
+
+
+def ball_grid_shape(radius: int = 6):
+    # Allocate memory by using an upper bound on the number of points
+    max_points = (2 * radius - 1) ** 3
+    ball= np.zeros((max_points, 3))
+    count = 0
+
+    for i in range(-radius + 1, radius):
+        for j in range(-radius + 1, radius):
+            for k in range(-radius + 1, radius):
+                if i ** 2 + j ** 2 + k ** 2 < radius ** 2:
+                    ball[count] = [i, j, k]
+                    count += 1
+
+    # Resize the array to the correct number of points added
+    ball = ball[:count]
+
     return ball
-ball4=FindBall(4)
-#First the Particlelist class is made. This is essentially a list of the masses, positions and velocities of the particles.
-#together with different functions acting on this physical system. These are functions to find the kinetic energy, angular momentum
-# and accelerations on the particles in the system. A function to simulate this system is also included. 
-class Particlelist:
-    def __init__(self,particlelist):
-        #particlelist object should for each particle contain a list with its mass, then the 3 components of its position
-        #then the 3 components of its velocity, so [m,rx,ry,rz,vx,vy,vz].
-        self.list=np.array(particlelist)
-        self.EPot=0
-
-    def Ekin(self): 
-        return np.dot(1/2*self.list[:,0],np.diagonal(self.list[:,4:7]@np.transpose(self.list[:,4:7])))*celllen**2 #take the dot product between 1/2*masses and the velocities squared. 
-        #the self.list[:,4:7]@np.transpose(self.list[:,4:7]) part creates a matrix with all of the velocities of each particle multiplied by each other
-        #we only want the velocities of each particle squared, so we take the diagonal of this. 
-
-    def ETot(self):
-        return self.Ekin()+self.EPot
-        #Note that EPot can only be calculated by UpdateAccsMOND, as the potential is needed.
-        
-    def AngMom(self):
-        return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4],self.list[:,4:7])) #angular momentum with [0,0,0] as origin.
-    
-    def UpdateAccsMOND(self,shape=ball4,sigma=1,iterlen=4,regime=0):
-    #M=4 #2*M is length of cube vertex
-        #Inputs:
-        #particlelist: np array of dtype object, contains each particle
-        #Each particle is a np array with the first index being the mass of the particle, the next 3 the position and the last 3
-        #the velocity of the particle
-        
-        #H is a np array that represents a vector field, so it has shape (3,2*halfpixels,2*halfpixels,2*halfpixels), so at each pixel in the grid
-        #the 3 components of the vector field are represented. H is the curl field which needs to be added to the Newtonian gravity field to get the
-        #MONDian gravity field multiplied by the interpolation function.
-        
-        #M is half of the length of the cube vertex. The cube in this case is the cube over which each particle gets smoothed.
-        #sigma is the standard deviation which is used when the particle's mass gets smoothed by a Gaussian
-        
-        #iterlen is the amount of times the main loop is executed, the amount of times the iterative loop is executed to find the MOND gravity field
-        #from the Newtonian gravity field
-        
-    #Outputs:
-    #The acceleration on each particle in particlelist due to gravity. 
-
-        density=AssignMassGaussShape(self.list,a=sigma,shape=shape)
-        densityfft=execfftw(fft_object, inputarr, outputarr, density)
-        #del density
-
-        potNDmat=CalcPot(densityfft)
-        del densityfft
-
-        accNDmat=CalcAccMat(potNDmat)
-        del potNDmat
-        H=np.zeros([3,2*halfpixels,2*halfpixels,2*halfpixels])
-
-        for i in range(iterlen):
-            accMONDmat, H=MainLoop(H, accNDmat,regime)
-        
-        accMONDmatfft=exec3fftw(fft_object3,inputarr3,outputarr3,accMONDmat)
-        del accMONDmat #the potential in Fourier space is -i*kvec*gvec, where gvec is the acceleration field
-        potMONDmatfft=-KdotProd(accMONDmatfft)*KLMinv/kstep
-        del accMONDmatfft
-        potMONDmat=np.imag(execfftw(ifft_object,outputarr,inversearr,potMONDmatfft))
-        del potMONDmatfft
-        accMONDmat=CalcAccMat(potMONDmat)
-        self.EPot=np.sum(potMONDmat*density)*cellvolume
-        del density
-        del potMONDmat
-
-        accparts=AssignAccsGaussShape(accMONDmat,self.list,a=sigma,shape=shape)
-
-        return accparts
-
-    
-    def TimeSim(self,T,dt,iterlength,regime=0):
-        posmat=np.zeros([len(self.list),T,3])
-        vecmat=np.zeros([len(self.list),T,3])
-
-        MomMat=np.zeros([T,3])
-        AngMat=np.zeros([T,3])
-        EkinMat=np.zeros([T])
-        EMat=np.zeros([T])
-
-        accnew=self.UpdateAccsMOND(iterlen=4,regime=regime)
-
-        for t in range(T):
-            
-            posmat[:,t,:]=self.list[:,1:4]
-            vecmat[:,t,:]=self.list[:,4:7]
-
-            AngMat[t,:]=self.AngMom()
-            MomMat[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EkinMat[t]=self.Ekin()
-            EMat[t]=self.ETot()
-        
-            accold=accnew
-            self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
-            try: #If the particles are outside of the grid this will raise an error. This catches this error
-                #and breaks the loop, ensuring that the data from before the error can be returned. 
-                accnew=self.UpdateAccsMOND(iterlen=iterlength,regime=regime)
-            except: #different ways of handling this exception can be made. For the isothermal sphere for example
-                #the particles will enter 
-                break
-            self.list[:,4:7]+=(accold+accnew)*0.5*dt*cellleninv
-        
-        return posmat,vecmat,AngMat,MomMat,EkinMat, EMat
-    
-
-#Now different classes of physical systems are made. These are specific systems of which analytical solutions in deep MOND are known.
-#These also include functions to calculate the analytical accelerations, and if known the analytical potential energy.
-#The simulation function is also altered to include a simulation with the exact accelerations.
-
-class TwoBodyParticlelist(Particlelist): #Arbitary two body system
-    def __init__(self,m1,m2,rvec1,rvec2,vvec1,vvec2):
-        rvec1+=np.array([halfpixels//2]*3)
-        rvec2+=np.array([halfpixels//2]*3)        
-        self.list=np.array([[m1,*rvec1,*vvec1],[m2,*rvec2,*vvec2]])
-        self.m1=m1
-        self.m2=m2
-
-    def Analyticalacc(self):
-        particle1=self.list[0]
-        particle2=self.list[1]
-        Force=Body2MOND(particle1[1:4],particle2[1:4],particle1[0],particle2[0])*(particle2[1:4]-particle1[1:4])/np.linalg.norm((particle1[1:4]-particle2[1:4]))
-        return [1/particle1[0]*Force,-1/particle2[0]*Force]
-
-    def EPotAna(self):
-        return 2/3*np.sqrt(G*a0)*((self.m1+self.m2)**(3/2)-self.m1**(3/2)-self.m2**(3/2))*np.log(np.linalg.norm(self.list[0,1:4]-self.list[1,1:4]))
-    
-    def AngMom(self):
-        return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels//2]*3),self.list[:,4:7]))
-    
-    def TimeSim(self,T,dt,iterlength,regime=0):
-        posmat=np.zeros([len(self.list),T,3])
-        vecmat=np.zeros([len(self.list),T,3])
-
-        posmat2=np.zeros([len(self.list),T,3])
-        vecmat2=np.zeros([len(self.list),T,3])
-
-        MomMat=np.zeros([T,3])
-        AngMat=np.zeros([T,3])
-        EMat=np.zeros([T])
-
-        MomMat2=np.zeros([T,3])
-        AngMat2=np.zeros([T,3])
-        EMat2=np.zeros([T])        
-
-        accnew=self.UpdateAccsMOND(iterlen=4,regime=regime)
-        for t in range(T):
-            
-            posmat[:,t,:]=self.list[:,1:4]
-            vecmat[:,t,:]=self.list[:,4:7]
-
-            AngMat[t,:]=self.AngMom()
-            MomMat[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EMat[t]=self.ETot()
-        
-            accold=accnew
-            self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
-            try:
-                accnew=self.UpdateAccsMOND(iterlen=iterlength,regime=regime)
-            except: 
-                
-                break
-            self.list[:,4:7]+=(accold+accnew)*0.5*dt*cellleninv
-
-        self.list[:,1:4]=posmat[:,0,:]
-        self.list[:,4:7]=vecmat[:,0,:] 
-        
-        accnew=np.array(self.Analyticalacc())
-        for t in range(T):
-            posmat2[:,t,:]=self.list[:,1:4]
-            vecmat2[:,t,:]=self.list[:,4:7]
-
-            AngMat2[t,:]=self.AngMom()
-            MomMat2[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EMat2[t]=self.Ekin()+self.EPotAna()
-        
-            accold=accnew
-            self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
-            accnew=np.array(self.Analyticalacc())
-            self.list[:,4:7]+=(accold+accnew)*0.5*dt*cellleninv
-
-        return posmat,vecmat,AngMat,MomMat,EMat,posmat2,vecmat2,AngMat2,MomMat2,EMat2
-
-
-
-class TwoBodyCircParticlelist(TwoBodyParticlelist): #Use this to create a two body system in which stable orbits are produced
-    def __init__(self,m1,m2,r,phase):
-        M=m1+m2
-        v=1/celllen*math.sqrt(2/3*math.sqrt(G*a0*(m1+m2))*(1/(1+math.sqrt(m1/(m1+m2)))+1/(1+math.sqrt(m2/(m1+m2)))))
-        rvec1=[m2/M*r*np.cos(phase),m2/M*r*np.sin(phase),0]
-        rvec2=[-m1/M*r*np.cos(phase),-m1/M*r*np.sin(phase),0]
-        rvec1+=np.array([halfpixels//2]*3)
-        rvec2+=np.array([halfpixels//2]*3)   
-        vvec1=[-m2*v/M*np.sin(phase),m2/M*v*np.cos(phase),0]
-        vvec2=[m1*v/M*np.sin(phase),-m1/M*v*np.cos(phase),0]
-        self.list=np.array([[m1,*rvec1,*vvec1],[m2,*rvec2,*vvec2]])
-        self.m1=m1
-        self.m2=m2
-
-class RingParticlelist(Particlelist): #Ring consisting of N particles. Analytical potential is unknown.
-    def __init__(self,m0,r2,N,m):
-        eps=1e-3
-        M=m0+N*m
-        v=np.sqrt(2*np.sqrt(G*a0)/(3*N*m)*(M**(3/2)-m0**(3/2)-N*m**(3/2)))*cellleninv
-        particlecentre=np.array([m0,halfpixels//2+eps,halfpixels//2+eps,halfpixels//2,0,0,0])
-        particles=[[m,halfpixels//2+r2*np.cos(zeta),halfpixels//2+r2*np.sin(zeta),halfpixels//2,-v*np.sin(zeta),v*np.cos(zeta),0] for zeta in np.random.uniform(0,2*np.pi,N)]
-        particles.append(particlecentre)
-        particlelist=np.array(particles)
-
-        self.list=particlelist
-        self.m0=m0
-        self.r=r2
-        self.N=N
-        self.m=m
-    
-    def AngMom(self):
-        return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels//2]*3),self.list[:,4:7]))
-    
-    def RingMONDacc(self):
-        M=self.m0+self.N*self.m
-        rhat=-1*np.transpose(np.transpose(self.list[:-1,1:4]-self.list[-1,1:4])/np.linalg.norm(self.list[:-1,1:4]-self.list[-1,1:4],axis=1))   
-        return 2/3*math.sqrt(G*a0)/(self.r*celllen)*(M**(3/2)-self.m0**(3/2)-self.N*self.m**(3/2))/(self.m*self.N)*rhat
-    
-class IsoThermalParticlelist(Particlelist): #Isothermal sphere of N particles in hydrostatic equillibrium. N should be sufficiently high to approximate the thermodynamic limit.
-    def __init__(self,m,b,N):
-        M=N*m
-        self.m=M
-        self.b=b
-        self.N=N
-        self.v2=np.sqrt(G*a0*self.m)/3*cellleninv**2*2
-        [eta1,eta2,eta3]=[np.random.uniform(low=0,high=1,size=N) for i in [0,1,2]]
-        [zeta1,zeta2,zeta3]=[np.random.uniform(low=0,high=2*np.pi,size=N) for i in [0,1,2]]
-        xi=np.random.uniform(low=-1,high=1,size=N)
-
-
-        rvec=np.transpose(np.array([[halfpixels]*3]*N))+b*(1/np.sqrt(eta1)-1)**(-2/3)*np.array([(np.sqrt(1-xi**2))*np.cos(zeta1),(np.sqrt(1-xi**2))*np.sin(zeta1),xi])
-        vvec=(np.array([np.sqrt(-1/1.5*self.v2*np.log(eta2))*np.cos(zeta2),np.sqrt(-1/1.5*self.v2*np.log(eta2))*np.sin(zeta2),np.sqrt(-1/1.5*self.v2*np.log(eta3))*np.cos(zeta3)]))
-        particlelist=[[m,rvec[0,i],rvec[1,i],rvec[2,i],vvec[0,i],vvec[1,i],vvec[2,i]] for i in range(np.shape(rvec)[1])]
-
-        particlelist2=[]
-        for part in particlelist:
-
-            if np.abs(part[1])<2*halfpixels-4 and np.abs(part[2])<2*halfpixels-4 and np.abs(part[3])<2*halfpixels-4: #we need to subtract 4 to account for the smoothing
-                particlelist2.append(part)
-
-        particlelist=np.array(particlelist2)
-        self.list=particlelist
-
-    def Analyticalacc(self):
-        rvec=self.list[:,1:4]
-        rvec=rvec-np.array([halfpixels,halfpixels,halfpixels])
-
-        r=np.linalg.norm(rvec,axis=np.where(np.array(np.shape(rvec))==3)[0][0]) #The axis expression makes sure it takes the norm at the axis where rvec has 3 components
-        return -rvec*np.transpose(np.array([np.sqrt(G*self.m*a0/(self.b**3*r))/(1+(r/self.b)**(3/2))]*3))*cellleninv
-    
-    def EPotAna(self):
-        return 2/3*np.sqrt(G*self.m*a0)*self.m/self.N*np.sum(np.log(1+(np.linalg.norm(self.list[:,1:4]-np.array([halfpixels]*3),axis=1)/self.b)**(3/2)))
-    
-    
-    def AngMom(self):
-        return sum(np.diag(self.list[:,0])@np.cross(self.list[:,1:4]-np.array([halfpixels]*3),self.list[:,4:7]))
-    
-    
-    def TimeSim(self,T,dt,iterlength):
-        posmat=np.zeros([len(self.list),T,3])
-        vecmat=np.zeros([len(self.list),T,3])
-
-        posmat2=np.zeros([len(self.list),T,3])
-        vecmat2=np.zeros([len(self.list),T,3])
-
-        MomMat=np.zeros([T,3])
-        AngMat=np.zeros([T,3])
-        EMat=np.zeros([T])
-
-        MomMat2=np.zeros([T,3])
-        AngMat2=np.zeros([T,3])
-        EMat2=np.zeros([T])        
-
-        accnew=self.UpdateAccsMOND(iterlen=4)  
-        for t in range(T):
-            
-            posmat[:,t,:]=self.list[:,1:4]
-            vecmat[:,t,:]=self.list[:,4:7]
-
-            AngMat[t,:]=self.AngMom()
-            MomMat[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EMat[t]=self.ETot()
-        
-            accold=accnew
-            self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
-            try:
-                accnew=self.UpdateAccsMOND(iterlen=iterlength)
-            except: 
-                 self.list[:,1:4]=self.list[:,1:4]%(2*halfpixels-4)
-                 accnew=self.UpdateAccsMOND(iterlen=iterlength)
-            self.list[:,4:7]+=(accold+accnew)*0.5*dt*cellleninv
-
-        self.list[:,1:4]=posmat[:,0,:]
-        self.list[:,4:7]=vecmat[:,0,:] 
-        
-        accnew=np.array(self.Analyticalacc())
-        for t in range(T):
-            posmat2[:,t,:]=self.list[:,1:4]
-            vecmat2[:,t,:]=self.list[:,4:7]
-
-            AngMat2[t,:]=self.AngMom()
-            MomMat2[t,:]=np.transpose(self.list[:,4:7])@self.list[:,0]
-            EMat2[t]=self.Ekin()+self.EPotAna()
-        
-            accold=accnew
-            self.list[:,1:4]+=self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
-            accnew=np.array(self.Analyticalacc())
-            self.list[:,4:7]+=(accold+accnew)*0.5*dt*cellleninv
-
-        return posmat,vecmat,AngMat,MomMat,EMat,posmat2,vecmat2,AngMat2,MomMat2,EMat2
-
-
-
-
-#Functions to execute the fft
-def execfftw(fft_object,inputarr,outputarr,arr):
-    inputarr[:,:,:]=arr
-    fftarr=fft_object()
-
-    return fftarr.copy()
-
-def exec3fftw(fft_object,inputarr,outputarr,arr):
-    inputarr[:,:,:,:]=arr
-    fftarr=fft_object()
-
-    return fftarr.copy()
-
-#Just the euclidean distance between points a and b.
-def EuclidDist(a,b):
-    d=(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2
-    return np.sqrt(d)
-
-def DiscrK(k):
-    return k**2
-DiscrKvect=np.vectorize(DiscrK)
-#Mondian acceleration between two bodies
-def Body2MOND(x,y,m1,m2):
-    M=m1+m2
-    return 2/3*np.sqrt(G*a0)/(celllen*EuclidDist(x,y))*(M**(3/2)-m1**(3/2)-m2**(3/2))
-#Newtonian acceleration between two bodies
-def NDacc(particle1,particle2):
-    particle1=np.array(particle1)
-    particle2=np.array(particle2)
-    return G*particle1[0]/(EuclidDist(particle1[1:4], particle2[1:4])**2*celllen**2)*(particle1[1:4]-particle2[1:4])/np.linalg.norm((particle1[1:4]-particle2[1:4]))
-#Different weight functions. 
-def GaussCdf(x):
-    return 1/2+1/2*math.erf(x/math.sqrt(2))
-GaussCdf=np.vectorize(GaussCdf)
-
-def Cicweight(x): #added later, not sure if correct
-    if x<1:
-        return 1-x
-    else:
-        return 0
-    
-def TSCweight(x):
-    if abs(x)<0.5:
-        return 3/4-(x)**2
-    elif abs(x)<3/2:
-        return 1/2*(3/2-x)**2
-    else:
-        return 0
-    
-def Ord4weight(x): #Absolute values are now taken twice, not necessary
-    if abs(x)<1:
-        return 2/3-x**2+abs(x)**3*1/2
-    if abs(x)<2:
-        return 4/3-2*abs(x)+x**2-1/6*x**3
-    else:
-        print("wrong point")
-        return 0
-
-def Ord6weight(x):
-    x=abs(x)
-    if abs(x)<1:
-        return 11/20-x**2/2+x**4/4-x**5/12
-    if abs(x)<2:
-        return 17/40+5/8*x-7/4*x**2+5/4*x**3-3/8*x**4+x**5/24
-    if abs(x)<3:
-        return 81/40-27/8*x+9/4*x**2-3/4*x**3+x**4/8-x**5/120
-    else:
-        print("wrong point")
-        return 0
-    
-def GaussWeight(x,a):
-    x=abs(x)
-    
-    return oversqrt2pi*np.exp(-x**2/(2*a**2)) 
-
-#Find cells in a discrete ball of radius N and make an array of these.
-
-
-
-
-#Different functions to assign mass from the particles to the grid
-#The first one can use arbitrary weight functions
-#The second can only use the Gaussian weight function, but is faster
-#The third can only use the Gaussian, but uses arbitrary shapes instead of cubes around the particle.
-def AssignMassfunc(particlelist,weightfunc,N,a=1):  #N is order of the method divided by 2, amount of points used is (2N)^3
-    density=np.zeros([2*halfpixels,2*halfpixels,2*halfpixels])
-    if weightfunc==GaussWeight: #For a=1, N>3, a=1.5 N>4, a=2 N>5, a=3 N>8. For CIC N=1, Ord6 N=3. 
-        weightfunc=lambda x: GaussWeight(x,a)
-    for i in particlelist: 
-        x=i[1]
-        y=i[2]
-        z=i[3]
-      
-        cellrange=tuple(np.arange(-N,N)+1)
-        
-        for j in itert.product(cellrange,cellrange,cellrange): 
-            cellcoords=(int(i[1])+j[0],int(i[2])+j[1],int(i[3])+j[2])
-            celllen2=1 #this should stay 1 as long as particle positions are given in pixels and not in actual space
- 
-            weight=weightfunc(abs(cellcoords[0]-x)/celllen2)*weightfunc(abs(cellcoords[1]-y)/celllen2)*weightfunc(abs(cellcoords[2]-z)/celllen2)
-            density[cellcoords]+=i[0]*weight
-        
-    a3inv=(a)**(-3)
-
-    return density*cellvolumeinv*a3inv 
-
-def AssignMassGauss(particlelist,N,a=1):  #N is order of the method divided by 2, amount of points used is (2N)^3
-    density=np.zeros([2*halfpixels,2*halfpixels,2*halfpixels])
-    #For a=1, N>3, a=1.5 N>4, a=2 N>5, a=3 N>8. 
-  
-    for i in particlelist: 
-        x=i[1]
-        y=i[2]
-        z=i[3]
-      
-        cellrange=tuple(np.arange(-N,N)+1)
-        
-        for j in itert.product(cellrange,cellrange,cellrange): 
-            cellcoords=(int(i[1])+j[0],int(i[2])+j[1],int(i[3])+j[2])
-            weight=oversqrt2pi3*np.exp(-((cellcoords[0]-x)**2+(cellcoords[1]-y)**2+(cellcoords[2]-z)**2)/(2*a**2))
-            density[cellcoords]+=i[0]*weight
-        
-    a3inv=(a)**(-3)
-
-    return density*cellvolumeinv*a3inv 
-
-def AssignMassGaussShape(particlelist,a=1,shape=ball4):  #N is order of the method divided by 2, amount of points used is (2N)^3
-    density=np.zeros([2*halfpixels,2*halfpixels,2*halfpixels])
-    #For a=1, N>3, a=1.5 N>4, a=2 N>5, a=3 N>8. 
-  
-    for i in particlelist: 
-        x=i[1]
-        y=i[2]
-        z=i[3]
-      
-        for j in shape: 
-            cellcoords=(int(i[1])+j[0],int(i[2])+j[1],int(i[3])+j[2])
-            weight=oversqrt2pi3*np.exp(-((cellcoords[0]-x)**2+(cellcoords[1]-y)**2+(cellcoords[2]-z)**2)/(2*a**2))
-            density[cellcoords]+=i[0]*weight
-
-    a3inv=(a)**(-3)
-
-    return density*cellvolumeinv*a3inv 
-#Calculate potential from Fourier transformed density. 
-def CalcPot(densityfft):
-    potmatfft=-c*densityfft*KLMinv/kstep**2 #*kstep2inv #kstep2inv is 1/kstep**2
-    potmat=execfftw(ifft_object, outputarr, inversearr, potmatfft) #inverse Fourier Transform
-    potmat=np.real(potmat)
-    return potmat
-#Use finite differences to calculate the acceleration field on the grid.
-def CalcAccMat(potmat): 
-    accmat=np.array([(np.roll(potmat,1,axis=0)-np.roll(potmat,-1,axis=0))/(2*celllen),(np.roll(potmat,1,axis=1)-np.roll(potmat,-1,axis=1))/(2*celllen),(np.roll(potmat,1,axis=2)-np.roll(potmat,-1,axis=2))/(2*celllen)])
-    return accmat
-
-#Different functions to assign accelerations from the grid to the particles
-#The first one can use arbitrary weight functions
-#The second can only use the Gaussian weight function, but is faster
-#The third can only use the Gaussian, but uses arbitrary shapes instead of cubes around the particle.
-def AssignAccsfunc(accmat,particlelist2,weightfunc,N,a=1):
-    accparts=np.zeros([len(particlelist2),3])
-
-    if weightfunc==GaussWeight:
-        weightfunc=lambda x: GaussWeight(x,a) 
-    for k,i in enumerate(particlelist2): 
-        x=i[1]
-        y=i[2]
-        z=i[3]
-        cellrange=tuple(np.arange(-N,N)+1)
-        for j in itert.product(cellrange,cellrange,cellrange):
-            cellcoords=(int(x)+j[0],int(y)+j[1],int(z)+j[2]) 
-            weight=weightfunc(abs(cellcoords[0]-x))*weightfunc(abs(cellcoords[1]-y))*weightfunc(abs(cellcoords[2]-z))
-            accparts[k,:]+=(accmat[:,cellcoords[0],cellcoords[1],cellcoords[2]])*weight
-    a3inv=a**(-3)
-    return accparts*a3inv
-
-
-def AssignAccsGauss(accmat,particlelist2,N,a=1):
-    accparts=np.zeros([len(particlelist2),3])
-
-    for k,i in enumerate(particlelist2): 
-        x=i[1]
-        y=i[2]
-        z=i[3]
-        cellrange=tuple(np.arange(-N,N)+1)
-        for j in itert.product(cellrange,cellrange,cellrange):
-            cellcoords=(int(x)+j[0],int(y)+j[1],int(z)+j[2]) 
-            weight=oversqrt2pi3*np.exp(-((cellcoords[0]-x)**2+(cellcoords[1]-y)**2+(cellcoords[2]-z)**2)/(2*a**2))
-            accparts[k,:]+=(accmat[:,cellcoords[0],cellcoords[1],cellcoords[2]])*weight
-    a3inv=a**(-3)
-    return accparts*a3inv
-
-def AssignAccsGaussShape(accmat,particlelist2,a=1,shape=ball4):
-    accparts=np.zeros([len(particlelist2),3])
-
-    for k,i in enumerate(particlelist2): 
-        x=i[1]
-        y=i[2]
-        z=i[3]
-        
-        for j in shape:
-            cellcoords=(int(x)+j[0],int(y)+j[1],int(z)+j[2]) 
-            weight=weight=oversqrt2pi3*np.exp(-((cellcoords[0]-x)**2+(cellcoords[1]-y)**2+(cellcoords[2]-z)**2)/(2*a**2))
-            accparts[k,:]+=(accmat[:,cellcoords[0],cellcoords[1],cellcoords[2]])*weight
-    a3inv=a**(-3)
-    return accparts*a3inv
-
-
-
-
-def UpdateAccs(particlelist,M=4,sigma=1): #Newtonian particle mesh algorithm to find the accelerations on the particles
-    #N=4 #2*N is length of cube vertex
-    #sigma=1 #Standard deviation of Gauss
-    density=AssignMassfunc(particlelist,GaussWeight,M,a=sigma)
-    densityfft=execfftw(fft_object, inputarr, outputarr, density)
-    potmat=CalcPot(densityfft)
-    accmat=CalcAccMat(potmat)
-    accparts=AssignAccsfunc(accmat,particlelist,GaussWeight,M,a=sigma)
-    return accparts
-
-def UpdateAccsMOND(particlelist,H,M=4,sigma=1,iterlen=4):
-    #M=4 #2*M is length of cube vertex
-        #Inputs:
-        #particlelist: np array of dtype object, contains each particle
-        #Each particle is a np array with the first index being the mass of the particle, the next 3 the position and the last 3
-        #the velocity of the particle
-        
-        #H is a np array that represents a vector field, so it has shape (3,2*halfpixels,2*halfpixels,2*halfpixels), so at each pixel in the grid
-        #the 3 components of the vector field are represented. H is the curl field which needs to be added to the Newtonian gravity field to get the
-        #MONDian gravity field multiplied by the interpolation function.
-        
-        #M is half of the length of the cube vertex. The cube in this case is the cube over which each particle gets smoothed.
-        #sigma is the standard deviation which is used when the particle's mass gets smoothed by a Gaussian
-        
-        #iterlen is the amount of times the main loop is executed, the amount of times the iterative loop is executed to find the MOND gravity field
-        #from the Newtonian gravity field
-        
-    #Outputs:
-
-    #density=AssignMassGaussShape(particlelist,a=sigma,shape=ball4)
-    density=AssignMassGauss(particlelist,M,a=sigma)
-    densityfft=execfftw(fft_object, inputarr, outputarr, density)
-    del density
-
-    potNDmat=CalcPot(densityfft)
-    del densityfft
-
-    accNDmat=CalcAccMat(potNDmat)
-    del potNDmat
-
-    for i in range(iterlen):
-        accMONDmat, H=MainLoop(H, accNDmat,0)
-    accMONDmat=np.real(accMONDmat)
-    accparts=AssignAccsGauss(accMONDmat,particlelist,M,a=sigma)
-    #accparts=AssignAccsGaussShape(accMONDmat,particlelist,a=sigma,shape=ball4)
-
-    return accparts, H
-
-
-
-def UpdateAccsMOND2(particlelist,H,shape=ball4,sigma=1,iterlen=4):
-    #M=4 #2*M is length of cube vertex
-        #Inputs:
-        #particlelist: np array of dtype object, contains each particle
-        #Each particle is a np array with the first index being the mass of the particle, the next 3 the position and the last 3
-        #the velocity of the particle
-        
-        #H is a np array that represents a vector field, so it has shape (3,2*halfpixels,2*halfpixels,2*halfpixels), so at each pixel in the grid
-        #the 3 components of the vector field are represented. H is the curl field which needs to be added to the Newtonian gravity field to get the
-        #MONDian gravity field multiplied by the interpolation function.
-        
-        #M is half of the length of the cube vertex. The cube in this case is the cube over which each particle gets smoothed.
-        #sigma is the standard deviation which is used when the particle's mass gets smoothed by a Gaussian
-        
-        #iterlen is the amount of times the main loop is executed, the amount of times the iterative loop is executed to find the MOND gravity field
-        #from the Newtonian gravity field
-        
-    #Outputs:
-    #The acceleration on each particle in particlelist due to gravity. 
-
-    density=AssignMassGaussShape(particlelist,a=sigma,shape=shape)
-    densityfft=execfftw(fft_object, inputarr, outputarr, density)
-    del density
-
-    potNDmat=CalcPot(densityfft)
-    del densityfft
-
-    accNDmat=CalcAccMat(potNDmat)
-    del potNDmat
-
-    for i in range(iterlen):
-        accMONDmat, H=MainLoop(H, accNDmat,0)
-
-    accMONDmatfft=exec3fftw(fft_object3,inputarr3,outputarr3,accMONDmat)
-    potMONDmatfft=-KdotProd(accMONDmatfft)*KLMinv/kstep
-    potMONDmat=np.imag(execfftw(ifft_object,outputarr,inversearr,potMONDmatfft))
-    accMONDmat=CalcAccMat(potMONDmat)
-
-
-    accparts=AssignAccsGaussShape(accMONDmat,particlelist,a=sigma,shape=shape)
-
-    return accparts
-    
-
-def EGravNewton(particlelist): #Newtonian potential energy
-    Egrav=0
-    for i in itert.combinations(particlelist, 2):
-        p1=i[0]
-        p2=i[1]
-        Egrav+=-G*p1[0]*p2[0]*2/np.linalg.norm(p1[1:4]-p2[4:7])
-    return Egrav
-
-def KdotProd(A): #Dot product of a vector field with k vector. K vector is an element of the Fourier transformed domain. 
-    return (inprodx*A[0]+inprody*A[1]+inprodz*A[2])
-
-def inpol(x,func): #Interpolation function \mu
-    if func==0: #deepmond
+
+ball_shape = ball_grid_shape(radius=6)
+
+
+def put_particles_on_grid(grid_size: tuple[int, int, int], particlelist: cp.ndarray,
+                          shape: cp.ndarray = ball_shape,
+                          std: float = 1.0) -> cp.ndarray:
+    density = cp.zeros(grid_size)
+    particlelist = cp.array(particlelist)
+    shape = cp.array(shape)
+    shape_coords = shape[cp.newaxis, :, :]
+    particle_coords = particlelist[:, 1:4][:, cp.newaxis, :]
+
+    # Broadcast shape and particle coordinates
+    cellcoords = cp.rint(particle_coords + shape_coords).astype(int)
+
+    # Ensure the coordinates are within bounds
+    cellcoords = cp.clip(cellcoords, 0, cp.array(grid_size) - 1)
+
+    # Calculate the weights
+    deltas = cellcoords - particle_coords
+    sq_distances = cp.sum(deltas ** 2, axis=-1)
+    weights = OVERSQRT2PI3 * cp.exp(-sq_distances / (2 * std ** 2))
+
+    # Flatten arrays for cp.add.at
+    flat_coords = cellcoords.reshape(-1, 3).T
+    flat_weights = (particlelist[:, 0][:, cp.newaxis] * weights).ravel()
+
+    # Add to density
+    cupyx.scatter_add(density, tuple(flat_coords), flat_weights)
+
+    a3inv = std ** (-3)
+    return (density * a3inv).get()
+
+
+
+def potential_grid_to_acceleration_grid(potential):
+    N = potential.shape[0]  # Assuming a cubic grid for simplicity
+    # Create k-space grid
+    kx = np.fft.fftfreq((PIXELCOUNT_X), d=CELLLEN) * 2 * np.pi
+    ky= np.fft.fftfreq((PIXELCOUNT_Y), d=CELLLEN) * 2 * np.pi
+    kz= np.fft.fftfreq((PIXELCOUNT_Z), d=CELLLEN) * 2 * np.pi
+    kx, ky, kz = np.meshgrid(kx, ky, kz, indexing='ij')
+
+    # Compute the Fourier transform of the potential
+    potential_fft = execfftw(fft_object, inputarr, outputarr, potential)
+
+    # Calculate the derivatives in the Fourier domain
+    # The derivative in Fourier space is given by multiplying by i*k in each dimension
+    gradient_x_fft = potential_fft * 1j * kx
+    gradient_y_fft = potential_fft * 1j * ky
+    gradient_z_fft = potential_fft * 1j * kz
+
+
+    force_x = np.real(execfftw(ifft_object, outputarr, inversearr, gradient_x_fft))
+    force_y = np.real(execfftw(ifft_object, outputarr, inversearr, gradient_y_fft))
+    force_z = np.real(execfftw(ifft_object, outputarr, inversearr, gradient_z_fft))
+
+    # Note the negative sign: force is the negative gradient of the potential
+    acceleration_grid = -np.array([force_x, force_y, force_z])
+
+    return acceleration_grid
+
+
+def potential_grid_to_acceleration_grid2(potential):
+    potential = cp.array(potential)
+    coefs = cp.array([1 / 280, -4 / 105, 1 / 5, -4 / 5, 0, 4 / 5, -1 / 5, 4 / 105, -1 / 280])
+
+    # Compute derivatives along each axis using CuPy
+    acc_x = sum([coefs[i] * cp.roll(potential, -4 + i, axis=0) for i in range(9)]) / (CELLLEN)
+    acc_y = sum([coefs[i] * cp.roll(potential, -4 + i, axis=1) for i in range(9)]) / (CELLLEN)
+    acc_z = sum([coefs[i] * cp.roll(potential, -4 + i, axis=2) for i in range(9)]) / (CELLLEN)
+
+    # Stack the acceleration components to form a grid
+    acceleration_grid = cp.stack([acc_x, acc_y, acc_z])
+
+    return acceleration_grid.get()
+
+def process_particle_chunk(acceleration_grid, shape, std, particles_chunk):
+    num_particles = len(particles_chunk)
+    forces_chunk = np.zeros((num_particles, 3), dtype=np.float64)
+
+    for k, particle in enumerate(particles_chunk):
+        x_pos, y_pos, z_pos = particle[1:4]
+        shape_array = shape + np.array([x_pos, y_pos, z_pos], dtype=np.float64)
+        offsets = np.round(shape_array).astype(np.int32)
+
+        dx2 = (offsets[:, 0] - x_pos) ** 2
+        dy2 = (offsets[:, 1] - y_pos) ** 2
+        dz2 = (offsets[:, 2] - z_pos) ** 2
+
+        weights = OVERSQRT2PI3 * np.exp(-(dx2 + dy2 + dz2) / (2 * std ** 2))
+        # weights /= np.sum(weights)  # Normalize weights to sum to 1, if required
+
+        for offset, weight in zip(offsets, weights):
+            if all(0 <= offset[j] < acceleration_grid.shape[j+1] for j in range(3)):  # j+1 should be j if acceleration_grid has 3 dimensions
+                forces_chunk[k, :] += acceleration_grid[:, offset[0], offset[1], offset[2]] * weight
+
+    return forces_chunk
+
+def grid_to_particles(acceleration_grid, particlelist, std: float,
+                      shape = ball_shape):
+    accparts = cp.zeros((len(particlelist), 3), dtype=cp.float64)
+    shape = cp.array(shape)
+    acceleration_grid = cp.array(acceleration_grid)
+
+    particlelist = cp.array(particlelist)
+
+    shape_coords = shape[cp.newaxis, :, :]
+    particle_coords = particlelist[:, 1:4][:, cp.newaxis, :]
+
+    # Calculate the cell coordinates
+    cellcoords = cp.rint(particle_coords + shape_coords).astype(int)
+
+    # Ensure the coordinates are within bounds
+    cellcoords = cp.clip(cellcoords, 0, cp.array(acceleration_grid.shape[1:]) - 1)
+
+    # Calculate the weights
+    deltas = cellcoords - particle_coords
+    sq_distances = cp.sum(deltas ** 2, axis=-1)
+    weights = OVERSQRT2PI3 * cp.exp(-sq_distances / (2 * std ** 2))
+
+    # Extract acceleration values
+    acc_x = acceleration_grid[0, cellcoords[..., 0], cellcoords[..., 1], cellcoords[..., 2]]
+    acc_y = acceleration_grid[1, cellcoords[..., 0], cellcoords[..., 1], cellcoords[..., 2]]
+    acc_z = acceleration_grid[2, cellcoords[..., 0], cellcoords[..., 1], cellcoords[..., 2]]
+
+    # Calculate the contributions
+    accparts[:, 0] = cp.sum(acc_x * weights, axis=1)
+    accparts[:, 1] = cp.sum(acc_y * weights, axis=1)
+    accparts[:, 2] = cp.sum(acc_z * weights, axis=1)
+
+    a3inv = std ** (-3)
+    return (accparts * a3inv).get()
+
+
+def inpol(x, inpol):
+    if inpol == 1:
         return x
-    if func==1: #standard
-        return x/np.sqrt(1+x**2)
-    if func==5:
-        return 1
-
-def inpolinv(x,func): #Inverse interpolation function \nu
-    if func==0:
-        return 1/np.sqrt(x)
-    if func==5:
-        return 1
-
-def CurlFreeProj(Ax,Ay,Az): #Calculates the curl free projection of the vector field A=[Ax,Ay,Az] using FFT's
-    A=np.array([Ax,Ay,Az])
-    Ahat=exec3fftw(fft_object3, inputarr3, outputarr3, A)
-    intermediatestep=KLMinv*KdotProd(Ahat)
-    xyz=exec3fftw(ifft_object3, outputarr3, inversearr3, np.array([intermediatestep*inprodx,intermediatestep*inprody,intermediatestep*inprodz]))
-    
-    return xyz
-
-def DivFreeProj(Ax,Ay,Az): #Calculates the divergence free projection of the vector field A=[Ax,Ay,Az] using FFT's
-    A=np.array([Ax,Ay,Az])
-    Ahat=exec3fftw(fft_object3, inputarr3, outputarr3, A)
-    intermediatestep=KLMinv*KdotProd(Ahat)
-    xyz=exec3fftw(ifft_object3, outputarr3, inversearr3, np.array([Ahat[0]-intermediatestep*inprodx,Ahat[1]-intermediatestep*inprody,Ahat[2]-intermediatestep*inprodz]))
-    
-    return xyz
-
-def MainLoop(H,NDacc,func): #This is the iteration loop. This calculates the MOND acceleration field from the Newtonian acceleration field. See thesis for information on why it works.
-    #func refers to which interpolation function should be used. 
-   
-    F=NDacc+H
-    gM=inpolinv(np.linalg.norm(F,axis=0)/a0,func)*F #might divide by zero
-    gM2=CurlFreeProj(gM[0], gM[1], gM[2])
-    gM2=np.real(gM2)
-    F=inpol(np.linalg.norm(gM2,axis=0)/a0,func)*gM2 
-    H=F-NDacc
-    H=DivFreeProj(H[0], H[1], H[2])
-    H=np.real(H)
-    return gM2, H
+    if inpol == 2:
+        return x/cp.sqrt(1+x**2)
 
 
-#%%
-
-#Some of the simulation parameters. You can change halfpixels, which is half the amount of pixels in one dimension of the grid
-#You can also change celllen, which is the distance between neighbouring pixels. Some other constants are defined, as this ensures that these calculations are only done once.
-halfpixels=2**6 #For optimal FFT's, this has to be a power of 2. 
-shape=(2*halfpixels,2*halfpixels,2*halfpixels)
-celllen=1*10**10
-cellleninv=1/celllen
-size=halfpixels*celllen
-kstep=np.pi/(halfpixels*celllen) 
-kstep2inv=1/kstep**2
-
-cellvolume=celllen**3
-cellvolumeinv=1/cellvolume
-oversqrt2pi=1/math.sqrt(2*np.pi)
-oversqrt2pi3=oversqrt2pi**3
-
-ball4=FindBall(4)
-
-T=400 #total number of timesteps
-EndTime=3600*12*400 #200 days 
-dt=EndTime/T
-tarr=np.linspace(0,(T-1)*dt,T)
-
-#Some physical constants. I just put them at 1, but the real values can also be used. 
-G=6.674*10**(-11)
-G=1
-c=4*np.pi*G
-a0=1.2*10**(-10)
-a0=1
+def inpolinv(x, inpol):
+    if inpol == 1:
+        return cp.nan_to_num(1/cp.sqrt(x))
+    if inpol == 2:
+        return cp.sqrt(0.5 + 0.5 * cp.sqrt(1 + 4 / (x ** 2)))
 
 
 
-particlelist=TwoBodyCircParticlelist(10**20,1.5*10**20,10,0)
 
-#%%
+def CurlFreeProj(Ax, Ay, Az):  # Calculates the curl free projection of the vector field A=[Ax,Ay,Az] using FFT's
+    A = cp.array([Ax, Ay, Az])
+    Ahat = cp.array(exec3fftw(fft_object3, inputarr3, outputarr3, A.get()))
+    intermediatestep = cp.array(cp.array(KLM_INV2) * KdotProd(Ahat))
+    xyz = exec3fftw(ifft_object3, outputarr3, inversearr3,
+                    (cp.array([intermediatestep * inprodx, intermediatestep * inprody, intermediatestep * inprodz])).get())
 
-K=DiscrKvect(np.arange(-halfpixels,halfpixels)[:,None,None])
-L=DiscrKvect(np.arange(-halfpixels,halfpixels)[:,None])
-M=DiscrKvect(np.arange(-halfpixels,halfpixels))
+    return cp.array(xyz)
 
-#KLM is a matrix where each entry is sum of the index's squared, or the sum of the function values of Kvect of the indices. 
-KLM=K+L+M
-del K,L,M
-KLM[halfpixels,halfpixels,halfpixels]=1
-KLM=np.roll(KLM,halfpixels,axis=0)
-KLM=np.roll(KLM,halfpixels,axis=1)
-KLM=np.roll(KLM,halfpixels,axis=2)
-KLMinv=1/KLM
 
-#The inproduct matrices are matrices where each entry is the x,y,z index, depending on if it is the x,y,z inproduct matrix. 
-inprodx=np.array([[[i for k in range(-halfpixels,halfpixels)] for j in range(-halfpixels,halfpixels)] for i in range(-halfpixels,halfpixels)]) 
-inprodx=np.roll(inprodx,halfpixels,axis=0)
-inprody=np.array([[[j for k in range(-halfpixels,halfpixels)] for j in range(-halfpixels,halfpixels)] for i in range(-halfpixels,halfpixels)])
-inprody=np.roll(inprody,halfpixels,axis=1)
-inprodz=np.array([[[k for k in range(-halfpixels,halfpixels)] for j in range(-halfpixels,halfpixels)] for i in range(-halfpixels,halfpixels)])
-inprodz=np.roll(inprodz,halfpixels,axis=2)
 
-#This part plans all of the FFT's. This is needed in the FFTW library and takes some time. It ensures however,
-#that the FFT's are fast when they need to be done. 
-#First some empty arrays are made for the scalar FFT. These are of data type complex 128. You might be able
-#to use a better data type which speeds up the code, but I could not find how. 
-#After that the FFT's are planned, currently this is done with 6 CPU threads.
-pyfftw.config.PLANNER_EFFORT="FFTW_MEASURE"
-inputarr=pyfftw.empty_aligned(shape,dtype="complex64") 
-outputarr=pyfftw.empty_aligned(shape,dtype="complex64")
-inversearr=pyfftw.empty_aligned(shape,dtype="complex64")
-fft_object=pyfftw.FFTW(inputarr,outputarr,axes=(0,1,2),threads=6)
-ifft_object=pyfftw.FFTW(outputarr,inversearr,direction="FFTW_BACKWARD",axes=(0,1,2),threads=6)
+def DivFreeProj(Ax, Ay, Az):  # Calculates the divergence free projection of the vector field A=[Ax,Ay,Az] using FFT's
+    A = cp.array([Ax, Ay, Az])
+    Ahat = cp.array(exec3fftw(fft_object3, inputarr3, outputarr3, A.get()))
+    intermediatestep = cp.array(KLM_INV2) * KdotProd(Ahat)
+    xyz = exec3fftw(ifft_object3, outputarr3, inversearr3, (cp.array(
+        [Ahat[0] - intermediatestep * inprodx, Ahat[1] - intermediatestep * inprody,
+         Ahat[2] - intermediatestep * inprodz])).get())
 
-#Now the same is done for the vector FFT.
-shape2=(3,shape[0],shape[1],shape[2])
-inputarr3=pyfftw.empty_aligned(shape2,dtype="complex64")
-outputarr3=pyfftw.empty_aligned(shape2,dtype="complex64")
-inversearr3=pyfftw.empty_aligned(shape2,dtype="complex64")
-fft_object3=pyfftw.FFTW(inputarr3,outputarr3,axes=(1,2,3),threads=6)
-ifft_object3=pyfftw.FFTW(outputarr3,inversearr3,direction="FFTW_BACKWARD",axes=(1,2,3),threads=6)
+    return cp.array(xyz)
 
+
+def KdotProd(
+        A):  # Dot product of a vector field with k vector. K vector is an element of the Fourier transformed domain.
+    return (inprodx * A[0] + inprody * A[1] + inprodz * A[2])
+
+class detected(Exception):
+    pass
+
+def correct_potential(potential_grid, particles):
+    cutoff = 10
+    Nx, Ny, Nz = potential_grid.shape
+    grid_positions = np.indices((Nx, Ny, Nz)).transpose(1, 2, 3, 0)
+
+    for particle in particles:
+        mass, px, py, pz, _, _, _ = particle
+
+        # Define influence region based on the cutoff distance
+        x_min = max(int(px - cutoff), 0)
+        x_max = min(int(px + cutoff + 1), Nx)
+        y_min = max(int(py - cutoff), 0)
+        y_max = min(int(py + cutoff + 1), Ny)
+        z_min = max(int(pz - cutoff), 0)
+        z_max = min(int(pz + cutoff + 1), Nz)
+
+        # Extracting local grid positions and calculating distances
+        local_grid_positions = grid_positions[x_min:x_max, y_min:y_max, z_min:z_max]
+        distance_vectors = local_grid_positions - np.array([px, py, pz])
+        distances = np.linalg.norm(distance_vectors, axis=3)
+
+        # Create a mask to apply corrections only within the cutoff and avoid division by zero
+        influence_mask = (distances < cutoff)
+        valid_distances = distances[influence_mask]
+
+        # Calculating the gravitational potential using the Gaussian smoothed formula
+
+        correction = G * mass * (scipy.special.erf(valid_distances/2)/((valid_distances*CELLLEN)**2))
+
+        # Applying the correction
+        correction_array = np.zeros_like(distances)
+        correction_array[influence_mask] = correction
+        potential_grid[x_min:x_max, y_min:y_max, z_min:z_max] += correction_array
+
+
+    return potential_grid
+
+def interpolate_potential(potential, particlelist):
+
+
+    std = 1
+    potparts = cp.zeros((len(particlelist)), dtype=cp.float64)
+    potential = cp.array(potential)
+
+    particlelist = cp.array(particlelist)
+
+    shape = cp.array(ball_shape)  # Influence range
+    shape_coords = shape[cp.newaxis, :, :]
+    particle_coords = particlelist[:, 1:4][:, cp.newaxis, :]
+
+    # Compute cell coordinates
+    cellcoords = cp.rint(particle_coords + shape_coords).astype(int)
+    cellcoords = cp.clip(cellcoords, 0, cp.array(potential.shape) - 1)
+
+    # Distance and weight calculations
+    deltas = cellcoords - particle_coords
+    sq_distances = cp.sum(deltas ** 2, axis=-1)
+    weights = cp.exp(-sq_distances / (2 * std ** 2)) * OVERSQRT2PI3
+
+    # Extract potential values from the grid
+    potparts_x = potential[cellcoords[..., 0], cellcoords[..., 1], cellcoords[..., 2]]
+
+    # Exclude self-energy and sum for the total potential energy contributions
+    interaction_potential_contributions = cp.sum(potparts_x * weights, axis=1)
+
+    # Sum the contributions to get the total potential energy, excluding self-interactions
+    total_potential_energy = cp.sum(interaction_potential_contributions*particlelist[:,0])
+
+    return total_potential_energy
+
+
+
+
+counter = 1
+def get_accelerations(std: float, particlelist, iterlen = iterlength, inpolfunc = 2, method=3):
+    if debug: print("GRID ASSIGNMENT STARTED")
+    if timing: start_time = timeit.default_timer()
+    mass_grid = put_particles_on_grid(grid_size=(PIXELCOUNT_X, PIXELCOUNT_Y, PIXELCOUNT_Z), shape=ball_shape,
+                                          std=std, particlelist=particlelist)
+    density_grid = mass_grid / CELLLEN ** 3
+    if timing:
+        end_time = timeit.default_timer()
+        print("GRID: " + str(end_time-start_time))
+
+    if debug: print("GRID ASSIGNMENT ENDED")
+
+
+    if debug: print("NEWTONIAN STARTED")
+    if timing: start_time = timeit.default_timer()
+    density_fft = execfftw(fft_object, inputarr, outputarr, density_grid)
+    potential_fft = - 4* PI * G * density_fft * KLM_INV
+    potential_fft[PIXELCOUNT_X//2, PIXELCOUNT_Y//2, PIXELCOUNT_Z//2] = 0
+
+
+    potential = np.real(execfftw(ifft_object, outputarr, inversearr, potential_fft))
+
+    potential -= np.max(potential)
+
+    Epot = np.sum(density_grid*potential)*CELLLEN**3 #- 2*G*M_SUN**2 * np.sqrt(2/(3*np.pi)) / CELLLEN
+
+    acceleration_grid_ND = potential_grid_to_acceleration_grid2(potential)
+
+
+    Ekin = 1/(8*np.pi*G)*(np.linalg.norm(acceleration_grid_ND))**2 * CELLLEN**3
+
+
+
+    if mond:
+        if debug: print("MOND STARTED")
+        acceleration_grid_ND = cp.array(acceleration_grid_ND)
+        H = cp.zeros([3, PIXELCOUNT_X, PIXELCOUNT_Y, PIXELCOUNT_Z])
+        for i in range(iterlen):
+            F = acceleration_grid_ND + H
+            acceleration_grid_MOND = inpolinv(cp.linalg.norm(F, axis=0) / A0, inpolfunc) * F
+            acceleration_grid_MOND = CurlFreeProj(acceleration_grid_MOND[0], acceleration_grid_MOND[1], acceleration_grid_MOND[2])
+            acceleration_grid_MOND = cp.real(acceleration_grid_MOND)
+            F = inpol(cp.linalg.norm(acceleration_grid_MOND, axis=0) / A0, inpolfunc) * acceleration_grid_MOND
+            H = F - acceleration_grid_ND
+            H = DivFreeProj(H[0], H[1], H[2])
+            H = cp.real(H)
+
+
+        accMONDmatfft = cp.array(exec3fftw(fft_object3, inputarr3, outputarr3, acceleration_grid_MOND.get()))
+
+        potMONDmatfft = -KdotProd(accMONDmatfft) * cp.array(KLM_INV2) / K_STEP
+
+
+
+        potMONDmat = cp.array(np.imag(execfftw(ifft_object, outputarr, inversearr, potMONDmatfft.get())))
+        acceleration_grid_MOND = potential_grid_to_acceleration_grid2(potMONDmat)
+        norm = (np.linalg.norm(acceleration_grid_MOND)**2)/A0**2
+        Ekin = A0**2/(8*np.pi*G) * (np.sqrt(norm)*np.sqrt(norm+1)-np.arcsinh(np.sqrt(norm))) * CELLLEN**3
+        Epot = np.sum(density_grid * potMONDmat.get()) * CELLLEN ** 3
+        print(Ekin)
+
+    if mond:
+        accelerations = grid_to_particles(acceleration_grid_MOND, particlelist=particlelist, std=std)
+    else:
+        accelerations= grid_to_particles(acceleration_grid_ND, particlelist=particlelist, std=std)
+
+
+
+
+
+    if method == 3:
+
+        particle_positions = np.array([p[1:4] for p in particlelist])
+        particle_masses = np.array([p[0] for p in particlelist])
+
+        num_particles = len(particlelist)
+
+        for index1 in range(num_particles):
+            distance_to_origin = np.linalg.norm(
+                particle_positions[index1] - np.array([PIXELCOUNT_X // 2, PIXELCOUNT_Y // 2, PIXELCOUNT_Z // 2]))
+            if distance_to_origin > 7: continue
+
+            distance_vecs = particle_positions - particle_positions[index1]
+            distances = np.linalg.norm(distance_vecs, axis=1)
+
+            valid_indices = (distances >0) & (distances < 8)  #& (distance_to_origin > 2) & (distances <= 4) & (distance_to_origin <= 10)
+
+            masses = particle_masses[valid_indices]
+            distance_vecs = distance_vecs[valid_indices]
+            distances = distances[valid_indices]
+
+            if distances.size > 0:
+
+
+                distance_factors = correction_factor(distances, std) * distance_vecs.T / distances
+                correction = np.sum(distance_factors * G * masses / CELLLEN, axis=1)
+
+                correction2 = np.sum(G * masses / ((distances**2) * distances) * distance_vecs.T / CELLLEN ** 2, axis=1)
+
+                accelerations[index1] -= correction
+                accelerations[index1] += correction2
+
+        # Ewald correction
+        if debug: print("EWALD STARTED")
+        for index1, particle1 in enumerate(particlelist):
+            correction = np.zeros(3)
+            correction2 = np.zeros(3)
+            for index2, particle2 in enumerate(particlelist):
+                if index1 == index2: continue
+                distance_vec = particle1[1:4] - particle2[1:4]
+                distance = np.linalg.norm(distance_vec)
+                if distance > 4: continue
+
+
+                correction += correction_factor(distance, 1) * distance_vec / distance * G * particle2[0] / CELLLEN
+                correction2 += (-G * particle2[0] / (distance + 0.001) ** 3 * distance_vec / CELLLEN ** 2)
+
+            accelerations[index1] += correction
+
+            accelerations[index1] += correction2
+    if debug: print("EWALD ENDED")
+
+    if timing:
+        end_time = timeit.default_timer()
+        print("Corrections: " + str(end_time-start_time))
+
+
+
+    return accelerations, Epot, Ekin
+
+
+
+
+def correction_factor(R, std):
+    return (scipy.special.erf(R/(2*std))/R**2 - np.exp(-R**2/(4*std**2))/(np.sqrt(np.pi)*R*std)) / CELLLEN
+
+def time_loop(number_of_steps, dt, std: float, particlelist, method=3):
+    pos = [[] for _ in range(number_of_steps)]
+    vel = [[] for _ in range(number_of_steps)]
+    Ekin = np.zeros(number_of_steps)
+    Epot = np.zeros(number_of_steps)
+    Eveld = np.zeros(number_of_steps)
+
+    accelerations, Epot[0], Ekin[0] = get_accelerations(std=std, particlelist=particlelist, method=method)
+    for t in range(number_of_steps):
+
+
+
+        print(f"{t}/{number_of_steps - 1}")
+
+        pos[t] = particlelist[:, 1:4].copy()
+        vel[t] = particlelist[:, 4:7].copy()
+
+
+
+        # Update positions
+        if debug: print("UPDATE POSITIONS STARTED")
+
+
+        old_accelerations = accelerations.copy()
+
+        particlelist[:, 1:4] += particlelist[:, 4:7] * dt + 0.5 * accelerations[:] * (dt ** 2) / CELLLEN
+
+        if debug: print("UPDATE POSITIONS ENDED")
+
+
+        accelerations, Epot[t], Ekin[t] = get_accelerations(std=std, particlelist=particlelist, method=method)
+
+        if debug: print("UPDATE ACCELERATIONS STARTED")
+        particlelist[:, 4:7] = np.add(particlelist[:, 4:7], 0.5 * (old_accelerations[:] + accelerations[:]) * dt / CELLLEN)
+        if debug: print("UPDATE ACCELERATION ENDED")
+        Eveld[t] = Ekin[t]
+
+
+        Ekin[t] = np.sum((1/2*particlelist[:, 0]*(np.linalg.norm(particlelist[:, 4:7], axis=1)*CELLLEN)**2))
+
+        print(Ekin[t]+Epot[t]+Eveld[t])
+
+
+
+
+
+    return pos, Ekin, Epot, Eveld
+
+
+
+
+def run_simulation(particlelist, N, std, dt, method=1):
+
+    particlelist = particlelist
+    end_positions, Ekin, Epot, Eveld = time_loop(number_of_steps=N, dt=dt, std=std, particlelist=particlelist, method=method)
+    np.save("positions_disk_galaxy.npy", end_positions)
+    np.save("Ekin_disk_galaxy.npy", Ekin)
+    np.save("Epot_disk_galaxy.npy", Epot)
+
+
+
+
+
+
+def execfftw(fft_object, inputarr, outputarr, arr):
+    inputarr[:, :, :] = arr
+    fftarr = fft_object()
+
+    return fftarr.copy()
+
+
+def exec3fftw(fft_object, inputarr, outputarr, arr):
+    inputarr[:, :, :, :] = arr
+    fftarr = fft_object()
+
+    return fftarr.copy()
+
+
+if __name__ == "__main__":
+    def DiscrK(k, k_step):
+        return (k / k_step) ** 2
+
+
+
+    DiscrKvect = np.vectorize(DiscrK)
+
+    k_step_x = 2 * np.pi/(CELLLEN*PIXELCOUNT_X)
+    k_step_y = 2 * np.pi / (CELLLEN * PIXELCOUNT_Y)
+    k_step_z = 2 * np.pi / (CELLLEN * PIXELCOUNT_Z)
+
+    k_indices_x = np.arange(-PIXELCOUNT_X // 2, PIXELCOUNT_X // 2)
+    k_indices_y = np.arange(-PIXELCOUNT_Y // 2, PIXELCOUNT_Y // 2)
+    k_indices_z = np.arange(-PIXELCOUNT_Z//2, PIXELCOUNT_Z//2)
+
+
+    # Apply the DiscrK function with k-space step size for each dimension
+    K = DiscrKvect(k_indices_x[:, None, None], 1/k_step_x)
+    L = DiscrKvect(k_indices_y[None, :, None], 1/k_step_y)
+    M = DiscrKvect(k_indices_z[None, None, :], 1/k_step_z)
+
+    # KLM is a matrix where each entry is sum of the index's squared, or the sum of the function values of Kvect of the indices.
+
+    KLM = K + L + M
+
+    KLM[PIXELCOUNT_X // 2, PIXELCOUNT_Y // 2, PIXELCOUNT_Z // 2] = 1
+    KLM = np.roll(KLM, PIXELCOUNT_X // 2, axis=0)
+    KLM = np.roll(KLM, PIXELCOUNT_Y // 2, axis=1)
+    KLM = np.roll(KLM, PIXELCOUNT_Z // 2, axis=2)
+    KLM_INV = 1 / KLM
+
+
+    def DiscrK2(k):
+        return k ** 2
+
+
+    DiscrKvect2 = np.vectorize(DiscrK2)
+    K2 = DiscrKvect2(np.arange(-PIXELCOUNT_X // 2, PIXELCOUNT_X // 2)[:, None, None])
+
+    L2 = DiscrKvect2(np.arange(-PIXELCOUNT_Y // 2, PIXELCOUNT_Y // 2)[:, None])
+
+    M2= DiscrKvect2(np.arange(-PIXELCOUNT_Z // 2, PIXELCOUNT_Z // 2))
+
+    # KLM is a matrix where each entry is sum of the index's squared, or the sum of the function values of Kvect of the indices.
+
+    KLM2 = K2 + L2 + M2
+
+
+    KLM2[PIXELCOUNT_X // 2, PIXELCOUNT_Y // 2, PIXELCOUNT_Z // 2] = 1
+    KLM2 = np.roll(KLM2, PIXELCOUNT_X // 2, axis=0)
+    KLM2 = np.roll(KLM2, PIXELCOUNT_Y // 2, axis=1)
+    KLM2 = np.roll(KLM2, PIXELCOUNT_Z // 2, axis=2)
+    KLM_INV2 = 1 / KLM2
+
+
+
+    shape_input  = (PIXELCOUNT_X, PIXELCOUNT_Y, PIXELCOUNT_Z)
+    shape_output = (PIXELCOUNT_X, PIXELCOUNT_Y, PIXELCOUNT_Z)
+
+    pyfftw.config.PLANNER_EFFORT = "FFTW_MEASURE"
+    inputarr = pyfftw.empty_aligned(shape_input, dtype="complex64")
+    outputarr = pyfftw.empty_aligned(shape_output, dtype="complex64")
+    inversearr = pyfftw.empty_aligned(shape_output, dtype="complex64")
+    fft_object = pyfftw.FFTW(inputarr, outputarr, axes=(0, 1, 2), threads=6, direction="FFTW_FORWARD")
+    ifft_object = pyfftw.FFTW(outputarr, inversearr, direction="FFTW_BACKWARD", axes=(0, 1, 2), threads=6)
+
+    # Now the same is done for the vector FFT.
+    shape2_input = (3, shape_input[0], shape_input[1], shape_input[2])
+    shape2_output = (3, shape_output[0], shape_output[1], shape_output[2])
+    inputarr3 = pyfftw.empty_aligned(shape2_input, dtype="complex64")
+    outputarr3 = pyfftw.empty_aligned(shape2_output, dtype="complex64")
+    inversearr3 = pyfftw.empty_aligned(shape2_output, dtype="complex64")
+    fft_object3 = pyfftw.FFTW(inputarr3, outputarr3, axes=(1, 2, 3), threads=6, direction="FFTW_FORWARD")
+    ifft_object3 = pyfftw.FFTW(outputarr3, inversearr3, direction="FFTW_BACKWARD", axes=(1, 2, 3), threads=6)
+
+    inprodx = cp.array(
+        [[[i for k in range(-PIXELCOUNT_Z // 2, PIXELCOUNT_Z // 2)] for j in range(-PIXELCOUNT_Y // 2, PIXELCOUNT_Y // 2)] for i
+         in
+         range(-PIXELCOUNT_X // 2, PIXELCOUNT_X // 2)])
+    inprodx = cp.roll(inprodx, PIXELCOUNT_X // 2, axis=0)
+    inprody = cp.array(
+        [[[j for k in range(-PIXELCOUNT_Z // 2, PIXELCOUNT_Z // 2)] for j in range(-PIXELCOUNT_Y // 2, PIXELCOUNT_Y // 2)] for i
+         in
+         range(-PIXELCOUNT_X // 2, PIXELCOUNT_X // 2)])
+    inprody = cp.roll(inprody, PIXELCOUNT_Y // 2, axis=1)
+    inprodz = cp.array(
+        [[[k for k in range(-PIXELCOUNT_Z // 2, PIXELCOUNT_Z // 2)] for j in range(-PIXELCOUNT_Y // 2, PIXELCOUNT_Y // 2)] for i
+         in
+         range(-PIXELCOUNT_X // 2, PIXELCOUNT_X // 2)])
+    inprodz = cp.roll(inprodz, PIXELCOUNT_Z // 2, axis=2)
