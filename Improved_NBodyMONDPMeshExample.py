@@ -112,7 +112,7 @@ class Particlelist:
         del densityfft 
         accNDmat = CalcAccMat(potNDmat) 
         if EFE[0] and (EFE[1] == 1): 
-            accNDmat[2,:,:,:] += -Calculate_gN_gal(EFE,x)
+            accNDmat[2,:,:,:] += -Calculate_gN_gal(EFE_M,EFE_M[1]/a0,regime)
         del potNDmat 
         H = cp.zeros([3,2*halfpixels,2*halfpixels,2*halfpixels],dtype=np.float32) 
         for i in range(iterlen): 
@@ -451,6 +451,7 @@ def COMConverter(particles,pos,vec,COM): # COMConverter = Center Of Mass Convert
 def KdotProd(A): #Dot product of a vector field with k vector. K vector is an element of the Fourier transformed domain. 
     return (inprodx*A[0]+inprody*A[1]+inprodz*A[2])
 
+
 def inpol(x,func): #Interpolation function \mu
     if func == 0: return x # Deepmond
     if func == 1: return x/cp.sqrt(1+x**2) # Standard
@@ -458,13 +459,13 @@ def inpol(x,func): #Interpolation function \mu
     if func == 3: return 1-cp.exp(-x) # Bose-Einstein
     if func == 5: return 1 # Newton
     
-
 def inpolinv(y,func): #Inverse interpolation function \nu
     if func == 0: return 1/cp.sqrt(y) # Deepmond
     if func == 1: return cp.sqrt(1/2+1/2*cp.sqrt(1+4/y**2)) # Standard
     if func == 2: return 1/(1-cp.exp(-cp.sqrt(y))) # McGaugh
     if func == 3: return # Bose-Einstein
     if func == 5: return 1 # Newton
+
 
 def CurlFreeProj(Ax,Ay,Az): #Calculates the curl free projection of the vector field A = [Ax,Ay,Az] using FFT's
     A = cp.array([Ax,Ay,Az])
@@ -494,13 +495,13 @@ def Calculate_gN_gal(EFE_M,x,func): # This calculates the field strength which n
     # mu(x) = inpol(x,func) = y/x
     # nu(y) = inpolinv(y,func) = x/y
     
-    error = abs(EFE_M[2]/a0-inpol(x,func)*x) 
+    error = abs(EFE_M[1]/a0-inpol(x,func)*x) 
     if error < 0.001: return inpol(x,func)*x*a0
     else:
         i = 1
-        while (EFE_M[2]/a0-inpol(x*(1+1/i),func)*x*(1+1/i)) < 0 :
+        while (EFE_M[1]/a0-inpol(x*(1+1/i),func)*x*(1+1/i)) < 0 :
             i += 1        
-        return Calculate_gN_gal(EFE,x*(1+1/i),func)
+        return Calculate_gN_gal(EFE_M,x*(1+1/i),func)
 
 def MainLoop(H,NDacc,func,EFE): #This is the iteration loop. This calculates the MOND acceleration field from the Newtonian acceleration field. See thesis for information on why it works.
     #func refers to which interpolation function should be used. 
@@ -593,9 +594,8 @@ if simulate_two_bodies:
     
     EFE_on = False
     EFE_M_strength = 1*a0 # au/kyr^2
-    EFE_method = 1 # is by adding homogeneous field to Newtonian acceleration field
 
-    EFE_M = [EFE_on,EFE_method,EFE_M_strength]; T = 10; iterlength = 4; regime = 1 
+    EFE_M = [EFE_on,EFE_M_strength]; T = 10; iterlength = 4; regime = 1 
     free_fall = 0 # 0 is static system, 1 is by shifting the positions each time step by 1/2*g*t^2 (not sure if correct, but may give insights into dynamics as compared to Newton dynamics)
                   # 2 is by keeping the center of mass in the middle (was used in simulations), 3 is static system but each timestep the particles are placed back to the origin (not sure if correct).
     
