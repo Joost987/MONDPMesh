@@ -454,17 +454,26 @@ def KdotProd(A): #Dot product of a vector field with k vector. K vector is an el
 
 def inpol(x,func): #Interpolation function \mu
     if func == 0: return x # Deepmond
-    if func == 1: return x/cp.sqrt(1+x**2) # Standard
-    if func == 2: return # McGaugh
-    if func == 3: return 1-cp.exp(-x) # Bose-Einstein
+    if func == 1: return x/np.sqrt(1+x**2) # Standard
+    if func == 2: return FindMu(lambda y: inpolinv(y,func),x)["x"]# McGaugh
+    if func == 3: return 1-np.exp(-x) # Bose-Einstein
     if func == 5: return 1 # Newton
     
+
 def inpolinv(y,func): #Inverse interpolation function \nu
-    if func == 0: return 1/cp.sqrt(y) # Deepmond
-    if func == 1: return cp.sqrt(1/2+1/2*cp.sqrt(1+4/y**2)) # Standard
-    if func == 2: return 1/(1-cp.exp(-cp.sqrt(y))) # McGaugh
-    if func == 3: return # Bose-Einstein
+    if func == 0: return 1/np.sqrt(y) # Deepmond
+    if func == 1: return np.sqrt(1/2+1/2*np.sqrt(1+4/y**2)) # Standard
+    if func == 2: return 1/(1-np.exp(-np.sqrt(y))) # McGaugh
+    if func == 3: return FindNu(lambda x: inpol(x,func),y)["x"]# Bose-Einstein
     if func == 5: return 1 # Newton
+
+
+def FindMu(nu,x,tol=1e-3):
+    return scipy.optimize.root(lambda mu: mu*nu(x*mu)-1,x,tol=tol)
+
+def FindNu(mu,y,tol=1e-3):
+    return scipy.optimize.root(lambda nu: nu*mu(y*nu)-1,np.sqrt(1/y),tol=tol)
+
 
 
 def CurlFreeProj(Ax,Ay,Az): #Calculates the curl free projection of the vector field A = [Ax,Ay,Az] using FFT's
