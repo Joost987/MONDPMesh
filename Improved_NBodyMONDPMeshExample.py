@@ -112,7 +112,7 @@ class Particlelist:
         del densityfft 
         accNDmat = CalcAccMat(potNDmat) 
         if EFE[0] and (EFE[1] == 1): 
-            accNDmat[2,:,:,:] += -Calculate_gN_gal(EFE,x
+            accNDmat[2,:,:,:] += -Calculate_gN_gal(EFE,x)
         del potNDmat 
         H = cp.zeros([3,2*halfpixels,2*halfpixels,2*halfpixels],dtype=np.float32) 
         for i in range(iterlen): 
@@ -452,15 +452,19 @@ def KdotProd(A): #Dot product of a vector field with k vector. K vector is an el
     return (inprodx*A[0]+inprody*A[1]+inprodz*A[2])
 
 def inpol(x,func): #Interpolation function \mu
-    if func == 0: return x #deepmond
-    if func == 1: return x/cp.sqrt(1+x**2) #standard
-    if func == 5: return 1
+    if func == 0: return x # Deepmond
+    if func == 1: return x/cp.sqrt(1+x**2) # Standard
+    if func == 2: return # McGaugh
+    if func == 3: return 1-cp.exp(-x) # Bose-Einstein
+    if func == 5: return 1 # Newton
     
 
-def inpolinv(x,func): #Inverse interpolation function \nu
-    if func == 0: return 1/cp.sqrt(x)
-    if func == 1: return cp.sqrt(1/2+1/2*cp.sqrt(1+4/x**2))
-    if func == 5: return 1
+def inpolinv(y,func): #Inverse interpolation function \nu
+    if func == 0: return 1/cp.sqrt(y) # Deepmond
+    if func == 1: return cp.sqrt(1/2+1/2*cp.sqrt(1+4/y**2)) # Standard
+    if func == 2: return 1/(1-cp.exp(-cp.sqrt(y))) # McGaugh
+    if func == 3: return # Bose-Einstein
+    if func == 5: return 1 # Newton
 
 def CurlFreeProj(Ax,Ay,Az): #Calculates the curl free projection of the vector field A = [Ax,Ay,Az] using FFT's
     A = cp.array([Ax,Ay,Az])
