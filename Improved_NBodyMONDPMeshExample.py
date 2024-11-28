@@ -112,7 +112,7 @@ class Particlelist:
         del densityfft 
         accNDmat = CalcAccMat(potNDmat) 
         if EFE[0] and (EFE[1] == 1): 
-            accNDmat[2,:,:,:] += -EFE[2]
+            accNDmat[2,:,:,:] += -Calculate_gN_gal(EFE,x
         del potNDmat 
         H = cp.zeros([3,2*halfpixels,2*halfpixels,2*halfpixels],dtype=np.float32) 
         for i in range(iterlen): 
@@ -121,7 +121,7 @@ class Particlelist:
         del accNDmat 
         accMONDmatfft = cp.fft.fftn(accMONDmat,axes=(1,2,3)) 
         del accMONDmat  #the potential in Fourier space is -i*kvec*gvec, where gvec is the acceleration field
-        potMONDmatfft = -KdotProd(accMONDmatfft)*KLMinv/kstep 
+        potMONDmatfft = -KdotProd(accMONDmatfft)*K2inv/kstep 
         del accMONDmatfft 
         potMONDmat = cp.imag(cp.fft.ifftn(potMONDmatfft))
         del potMONDmatfft 
@@ -417,7 +417,7 @@ def Body2MOND(x,y,m1,m2):
 
 #Calculate potential from Fourier transformed density. 
 def CalcPot(densityfft):
-    potmatfft = -c*densityfft*KLMinv/kstep**2 #*kstep2inv #kstep2inv is 1/kstep**2
+    potmatfft = -c*densityfft*K2inv/kstep**2 #*kstep2inv #kstep2inv is 1/kstep**2
     del densityfft 
     potmat = cp.fft.ifftn(potmatfft,s=shape) #inverse Fourier Transform
     del potmatfft 
@@ -455,6 +455,7 @@ def inpol(x,func): #Interpolation function \mu
     if func == 0: return x #deepmond
     if func == 1: return x/cp.sqrt(1+x**2) #standard
     if func == 5: return 1
+    
 
 def inpolinv(x,func): #Inverse interpolation function \nu
     if func == 0: return 1/cp.sqrt(x)
@@ -466,7 +467,7 @@ def CurlFreeProj(Ax,Ay,Az): #Calculates the curl free projection of the vector f
     del Ax,Ay,Az 
     Ahat = cp.fft.fftn(A,s=shape)
     del A 
-    intermediatestep = KLMinv*KdotProd(Ahat)
+    intermediatestep = K2inv*KdotProd(Ahat)
     del Ahat 
     xyz = cp.fft.ifftn(cp.array([intermediatestep*inprodx,intermediatestep*inprody,intermediatestep*inprodz]),s=shape)
     del intermediatestep 
@@ -477,20 +478,25 @@ def DivFreeProj(Ax,Ay,Az): #Calculates the divergence free projection of the vec
     del Ax,Ay,Az 
     Ahat = cp.fft.fftn(A,s=shape,axes=(1,2,3))
     del A 
-    intermediatestep = KLMinv*KdotProd(Ahat)
+    intermediatestep = K2inv*KdotProd(Ahat)
     xyz = cp.fft.ifftn(cp.array([Ahat[0]-intermediatestep*inprodx,Ahat[1]-intermediatestep*inprody,Ahat[2]-intermediatestep*inprodz]),s=shape,axes=(1,2,3))
     del intermediatestep 
     del Ahat 
     return xyz
 
-def Calculate_gM_gal(EFE,x,func): # This calculates the field strength which needs to be added to the MOND acceleration field if an external field is simulated using method 3
-    error = abs(EFE[2]/a0-inpol(x,func)*x)
-    if error < 0.001: return x*a0
+def Calculate_gN_gal(EFE_M,x,func): # This calculates the field strength which needs to be added to the Newton acceleration field if an external field is simulated using method 3
+    # x = gM/a0
+    # y = gN/a0
+    # mu(x) = inpol(x,func) = y/x
+    # nu(y) = inpolinv(y,func) = x/y
+    
+    error = abs(EFE_M[2]/a0-inpol(x,func)*x) 
+    if error < 0.001: return inpol(x,func)*x*a0
     else:
         i = 1
-        while (EFE[2]/a0-inpol(x*(1+1/i),func)*x*(1+1/i)) < 0 :
+        while (EFE_M[2]/a0-inpol(x*(1+1/i),func)*x*(1+1/i)) < 0 :
             i += 1        
-        return Calculate_gM_gal(EFE,x*(1+1/i),func)
+        return Calculate_gN_gal(EFE,x*(1+1/i),func)
 
 def MainLoop(H,NDacc,func,EFE): #This is the iteration loop. This calculates the MOND acceleration field from the Newtonian acceleration field. See thesis for information on why it works.
     #func refers to which interpolation function should be used. 
@@ -501,9 +507,7 @@ def MainLoop(H,NDacc,func,EFE): #This is the iteration loop. This calculates the
     gM2 = CurlFreeProj(gM[0], gM[1], gM[2])
     del gM 
     if EFE[0] and EFE[1] == 1:
-        x1 = EFE[2]/a0
-        EFE_strength = Calculate_gM_gal(EFE, x1, func) 
-        gM2[2,:,:,:] += -EFE_strength
+        gM2[2,:,:,:] += EFE[2]
     F = inpol(cp.linalg.norm(gM2,axis = 0)/a0,func)*gM2 
     H = F-NDacc
     del F 
@@ -550,19 +554,20 @@ a0 = 0.7978 # au/kyr^2
 
 #%% Creating matrices related to the k vector
 
-K=cp.arange(-halfpixels,halfpixels,dtype=np.float32)[:,None,None]**2
-L=cp.arange(-halfpixels,halfpixels,dtype=np.float32)[:,None]**2
-M=cp.arange(-halfpixels,halfpixels,dtype=np.float32)**2
+Kx=cp.arange(-halfpixels,halfpixels,dtype=np.float32)[:,None,None]**2
+Ky=cp.arange(-halfpixels,halfpixels,dtype=np.float32)[:,None]**2
+Kz=cp.arange(-halfpixels,halfpixels,dtype=np.float32)**2
 
 #KLM is a matrix where each entry is sum of the index's squared, or the sum of the function values of Kvect of the indices. 
-KLM=K+L+M
-del K,L,M 
-KLM[halfpixels,halfpixels,halfpixels]=1
-KLM=cp.roll(KLM,halfpixels,axis=0)
-KLM=cp.roll(KLM,halfpixels,axis=1)
-KLM=cp.roll(KLM,halfpixels,axis=2)
-KLMinv=1/KLM
-del KLM 
+K2=Kx+Ky+Kz
+del Kx,Ky,Kz 
+K2=cp.roll(K2,halfpixels,axis=0)
+K2=cp.roll(K2,halfpixels,axis=1)
+K2=cp.roll(K2,halfpixels,axis=2)
+K2[0,0,0]=1
+K2inv=1/K2
+del K2
+
 
 #The inproduct matrices are matrices where each entry is the x,y,z index, depending on if it is the x,y,z inproduct matrix. 
 inprodx = cp.zeros([2*halfpixels,2*halfpixels,2*halfpixels],dtype=np.float32)
@@ -583,14 +588,14 @@ if simulate_two_bodies:
     particlelist = Particlelist([[m1,rx1,ry1,rz1,vx1,vy1,vz1],[m2,rx2,ry2,rz2,vx2,vy2,vz2]])
     
     EFE_on = False
-    EFE_strength = 1*a0 # au/kyr^2
+    EFE_M_strength = 1*a0 # au/kyr^2
     EFE_method = 1 # is by adding homogeneous field to Newtonian acceleration field
 
-    EFE = [EFE_on,EFE_method,EFE_strength]; T = 10; iterlength = 4; regime = 1 
+    EFE_M = [EFE_on,EFE_method,EFE_M_strength]; T = 10; iterlength = 4; regime = 1 
     free_fall = 0 # 0 is static system, 1 is by shifting the positions each time step by 1/2*g*t^2 (not sure if correct, but may give insights into dynamics as compared to Newton dynamics)
                   # 2 is by keeping the center of mass in the middle (was used in simulations), 3 is static system but each timestep the particles are placed back to the origin (not sure if correct).
     
-    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EkinMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(T,dt,iterlength,EFE,free_fall,regime)
+    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EkinMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(T,dt,iterlength,EFE_M,free_fall,regime)
     posmat,vecmat,AngMat,MomMat,EkinMat,EMat,COM = posmat_cuda.get(),vecmat_cuda.get(),AngMat_cuda.get(),MomMat_cuda.get(),EkinMat_cuda.get(),EMat_cuda.get(),COM_cuda.get()
     
     if free_fall == 3:
