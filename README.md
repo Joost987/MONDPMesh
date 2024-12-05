@@ -15,4 +15,4 @@ Cupy, see: https://docs.cupy.dev/en/stable/install.html
 Numba, see: https://numba.pydata.org/
 
 ![alt text](https://github.com/Joost987/MONDPMesh/blob/CodeJKoster/Energy.pdf/to/img.png)
-![Alt text](/CodeJKoster/Energy.pdf?raw=true "Optional Title")
+![Alt text](/Energy.pdf?raw=true "Optional Title")
