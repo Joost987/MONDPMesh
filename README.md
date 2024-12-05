@@ -14,4 +14,5 @@ Pyfftw, which needs the C FFTW library. Its documentation can be found in https:
 Cupy, see: https://docs.cupy.dev/en/stable/install.html
 Numba, see: https://numba.pydata.org/
 
+https://github.com/Joost987/MONDPMesh/blob/CodeJKoster/Energy.pdf
 
