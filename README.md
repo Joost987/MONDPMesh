@@ -17,6 +17,8 @@ Note: One error that has been found is that the information of the last time ste
 Required libraries:
 Numpy, math, itertools, these are all included in base Python.
 Pyfftw, which needs the C FFTW library. Its documentation can be found in https://pyfftw.readthedocs.io/en/latest/. 
+Cupy, see: https://docs.cupy.dev/en/stable/install.html
+Numba, see: https://numba.pydata.org/
 
 A C++ version of the code has also been included, which works in the same way as the Python faster, but it is quite a bit faster and more memory efficient. The Python version is, however, easier to install and modify, and has some more example systems implemented. This version contains an example two-body simulation. The C++ version of the code needs the Eigens and either the FFTW or MKL libraries to work. The MKL and FFTW libraries use the same code. 
 
