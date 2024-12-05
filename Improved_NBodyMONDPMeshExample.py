@@ -136,7 +136,7 @@ class Particlelist:
         configure_AssignAccsGaussShape(accparts,accMONDmat,self.list,sigma,shape)
         return accparts
     
-    def TimeSim(self,T,dt,iterlength,EFE,free_fall,regime = 0):
+    def TimeSim(self,T,dt,itersteps,EFE,free_fall,regime = 0):
         posmat = cp.zeros([len(self.list),T,3],dtype=np.float32)
         vecmat = cp.zeros([len(self.list),T,3],dtype=np.float32)
 
@@ -168,7 +168,7 @@ class Particlelist:
                     self.list[:,6] += EFE[2]*cellleninv*dt # + g t 
             try: #If the particles are outside of the grid this will raise an error. This catches this error
                 #and breaks the loop, ensuring that the data from before the error can be returned. 
-                accnew = self.UpdateAccsMOND(EFE,iterlen = iterlength,regime = regime)
+                accnew = self.UpdateAccsMOND(EFE,iterlen = itersteps,regime = regime)
             except: #different ways of handling this exception can be made. For the isothermal sphere for example
                 #the particles will enter 
                 print("particle outside box")
@@ -191,12 +191,12 @@ class Particlelist:
                     self.list[:,1:4] += -(self.CenterOfMass()[0]-[halfpixels,halfpixels,halfpixels])
                     self.list[:,4:7] += -self.CenterOfMass()[1]
                     if free_fall == 3:
-                        self.UpdateAccsMOND(EFE,iterlen = iterlength,regime = regime)
+                        self.UpdateAccsMOND(EFE,iterlen = itersteps,regime = regime)
                         E_temp = self.EPot
                         
                         for i in range(1,t):
                             self.list[:,1:4] += -(dt*COM[4:7,i]+COM[1:4,i-1]-[halfpixels,halfpixels,halfpixels])
-                            self.UpdateAccsMOND(EFE,iterlen = iterlength,regime = regime)
+                            self.UpdateAccsMOND(EFE,iterlen = itersteps,regime = regime)
                             self.list[:,1:4] += dt*COM[4:7,i]+COM[1:4,i-1]-[halfpixels,halfpixels,halfpixels]
                             E_dt_keer_v_i = self.EPot
                             COM[0,t] += E_dt_keer_v_i - E_temp
@@ -227,7 +227,7 @@ class TwoBodyParticlelist(Particlelist): #Arbitary two body system
     def EPotAna(self):
         return 2/3*cp.sqrt(G*a0)*((self.m1+self.m2)**(3/2)-self.m1**(3/2)-self.m2**(3/2))*cp.log(cp.linalg.norm(self.list[0,1:4]-self.list[1,1:4]))
     
-    def TimeSim(self,T,dt,iterlength,regime = 0):
+    def TimeSim(self,T,dt,itersteps,regime = 0):
         posmat = cp.zeros([len(self.list),T,3])
         vecmat = cp.zeros([len(self.list),T,3])
 
@@ -255,7 +255,7 @@ class TwoBodyParticlelist(Particlelist): #Arbitary two body system
             accold = accnew
             self.list[:,1:4] += self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
             try:
-                accnew = self.UpdateAccsMOND(iterlen = iterlength,regime = regime)
+                accnew = self.UpdateAccsMOND(iterlen = itersteps,regime = regime)
             except: 
                 
                 break
@@ -354,7 +354,7 @@ class IsoThermalParticlelist(Particlelist): #Isothermal sphere of N particles in
     def EGravAna(self): # Returns the analytical gravitational energy
         pass
     
-    def TimeSim(self,T,dt,iterlength):
+    def TimeSim(self,T,dt,itersteps):
         posmat = cp.zeros([len(self.list),T,3]) # posmat = position vector
         vecmat = cp.zeros([len(self.list),T,3]) # vecmat = velocity vector
 
@@ -382,10 +382,10 @@ class IsoThermalParticlelist(Particlelist): #Isothermal sphere of N particles in
             accold = accnew
             self.list[:,1:4] += self.list[:,4:7]*dt+0.5*accold*cellleninv*dt**2 #Leapfrog without half integer time steps
             try:
-                accnew = self.UpdateAccsMOND(iterlen = iterlength)
+                accnew = self.UpdateAccsMOND(iterlen = itersteps)
             except: 
                  self.list[:,1:4] = self.list[:,1:4]%(2*halfpixels-4)
-                 accnew = self.UpdateAccsMOND(iterlen = iterlength)
+                 accnew = self.UpdateAccsMOND(iterlen = itersteps)
             self.list[:,4:7] += (accold+accnew)*0.5*dt*cellleninv
 
         self.list[:,1:4] = posmat[:,0,:]
@@ -536,6 +536,7 @@ halfpixels = 64 #For optimal FFT's, this has to be a power of 2.
 shape = (2*halfpixels,2*halfpixels,2*halfpixels)
 size_of_box = 4*10**15 # m
 size_of_box = 26738 # au
+size_of_box = 1 # ly 
 celllen = size_of_box/(2*halfpixels)
 cellleninv = 1/celllen
 size = halfpixels*celllen
@@ -549,18 +550,20 @@ oversqrt2pi3 = oversqrt2pi**3
 
 ball4 = FindBall(4)
 
-T = 4000 #total number of timesteps
-EndTime = 3600*12*400 # 200 days 
-EndTime = 200 # kyr (Alpha Centauri AB has oribtal period of about 80 kyr)
-dt = EndTime/T
-tarr = cp.linspace(0,(T-1)*dt,T)
+timesteps = 1000 # total number of timesteps
+# T is total simulated time
+T = 400 # kyr (Alpha Centauri AB has oribtal period of about 80 kyr)
+T = 0.4 # Myr
+dt = T/timesteps
 
 #Some physical constants
 G = 6.674*10**(-11) # m^3/(s^2*kg)
 G = 3.942*10**7 # au^3/(kyr^2*M☉)
+G = 0.156 # ly^3/(Myr^2*M☉)
 c = 4*cp.pi*G
 a0 = 1.2*10**(-10) # m/s^2
 a0 = 0.7978 # au/kyr^2
+a0 = 12.614 #ly/Myr^2
 
 # a0 = 1.2*10^-10 m/s^2 = 0.7978 au/kyr^2 = 12.614 Mly/Gyr^2
 # Acceleration from Milky Way on Sun = 3.47*10^-9 m/s^2 = 23.07 au/kyr^2 = 364.8 Mly/Gyr^2
@@ -594,54 +597,60 @@ for i in cp.roll(cp.arange(-halfpixels,halfpixels),halfpixels):
 
 #%% Simulating and plotting: Two bodies
 t_simulation_start = time.time()
-simulate_two_bodies = False
+simulate_two_bodies = True
 if simulate_two_bodies: 
-    m1,rx1,ry1,rz1,vx1,vy1,vz1 = 1,halfpixels*6/8,halfpixels,halfpixels,halfpixels/300,halfpixels*0.5/300,0
-    m2,rx2,ry2,rz2,vx2,vy2,vz2 = 2,halfpixels*9/8,halfpixels,halfpixels,-halfpixels*0.5/300,-halfpixels*0.25/300,0
+    m1,rx1,ry1,rz1,vx1,vy1,vz1 = 1,halfpixels*6/8,halfpixels,halfpixels,halfpixels,halfpixels,0
+    m2,rx2,ry2,rz2,vx2,vy2,vz2 = 2,halfpixels*9/8,halfpixels,halfpixels,-halfpixels,-halfpixels,0
     
     particlelist = Particlelist([[m1,rx1,ry1,rz1,vx1,vy1,vz1],[m2,rx2,ry2,rz2,vx2,vy2,vz2]])
     
     EFE_on = False
     EFE_M_strength = 1*a0 # au/kyr^2
 
-    EFE_M = [EFE_on,EFE_M_strength]; T = 10; iterlength = 4; regime = 1 
+    EFE_M = [EFE_on,EFE_M_strength]; itersteps = 4; regime = 1
     free_fall = 0 # 0 is static system, 1 is by shifting the positions each time step by 1/2*g*t^2 (not sure if correct, but may give insights into dynamics as compared to Newton dynamics)
                   # 2 is by keeping the center of mass in the middle (was used in simulations), 3 is static system but each timestep the particles are placed back to the origin (not sure if correct).
     
-    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EkinMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(T,dt,iterlength,EFE_M,free_fall,regime)
-    posmat,vecmat,AngMat,MomMat,EkinMat,EMat,COM = posmat_cuda.get(),vecmat_cuda.get(),AngMat_cuda.get(),MomMat_cuda.get(),EkinMat_cuda.get(),EMat_cuda.get(),COM_cuda.get()
+    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EkinMat_cuda,EgravMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(timesteps,dt,itersteps,EFE_M,free_fall,regime)
+    posmat,vecmat,AngMat,MomMat,EkinMat,EgravMat,EMat,COM = posmat_cuda.get(),vecmat_cuda.get(),AngMat_cuda.get(),MomMat_cuda.get(),EkinMat_cuda.get(),EgravMat_cuda.get(),EMat_cuda.get(),COM_cuda.get()
     
     if free_fall == 3:
-        posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EkinMat_cuda,EMat_cuda = COMConverter(particlelist,posmat_cuda,vecmat_cuda,COM_cuda)
-        posmat,vecmat,AngMat,MomMat,EkinMat,EMat = posmat_cuda.get(),vecmat_cuda.get(),AngMat_cuda.get(),MomMat_cuda.get(),EkinMat_cuda.get(),EMat_cuda.get()
+        posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EkinMat_cuda,EgravMat_cuda,EMat_cuda = COMConverter(particlelist,posmat_cuda,vecmat_cuda,COM_cuda)
+        posmat,vecmat,AngMat,MomMat,EkinMat,EgravMat,EMat = posmat_cuda.get(),vecmat_cuda.get(),AngMat_cuda.get(),MomMat_cuda.get(),EkinMat_cuda.get(),EgravMat_cuda.get(),EMat_cuda.get()
 
     
-    #Position plot
+    #Orbit plot
+    t_arr = np.linspace(0,T,timesteps)
+    
     plt.figure(figsize=(7,7))
     for i in range(N_body):
-        plt.plot(posmat[i,:,0],posmat[i,:,1])
-    plt.xlabel("$x$ (pixels)"); plt.ylabel("$y$ (pixels)")
+        plt.plot(posmat[i,:,0]*size_of_box/(halfpixels*2),posmat[i,:,1]*size_of_box/(halfpixels*2),label="Orbit particle "+str(i))
+    plt.xlabel("$x$ (ly)"); plt.ylabel("$y$ (ly)")
     if free_fall == 0 or free_fall == 1 or free_fall == 2: 
-        plt.xlim(0,2*halfpixels); plt.ylim(0,2*halfpixels)
+        plt.xlim(0,size_of_box); plt.ylim(0,size_of_box)
     else:
         plt.xlim(0,2*halfpixels);
     plt.grid()
+    plt.legend()
+    plt.savefig("Orbit.pdf")
     plt.show()
     
     #Velocity plot
     plt.figure(figsize=(7,7))
-    plt.plot(vecmat[0,:,1],'k.')
-    plt.plot(vecmat[1,:,1],'r.')
-    plt.xlabel("$T$ (dt)"); plt.ylabel("$v_y$ (pixels/dt)")
+    plt.plot(t_arr,vecmat[0,:,1],'k.')
+    plt.plot(t_arr,vecmat[1,:,1],'r.')
+    plt.xlabel("$T$ (Myr)"); plt.ylabel("$v_y$")
     plt.grid()
     plt.show()
     
     #Energy plot
     plt.figure(figsize=(7,7))
-    plt.plot(EMat,label="E total")
-    plt.plot(EkinMat,label="E kin")
-    plt.plot(EMat-EkinMat,label="E Pot",zorder=1)
-    plt.xlabel("timesteps"); plt.ylabel("Energy")
+    plt.plot(t_arr,EMat,label="E total")
+    plt.plot(t_arr,EkinMat,label="E kin")
+    plt.plot(t_arr,EgravMat,label="E grav")
+    plt.plot(t_arr,EMat-EkinMat-EgravMat,label="E Pot",zorder=1)
+    plt.xlabel("Time (Myr)"); plt.ylabel("Energy")
+    plt.savefig("Energy.pdf")
     plt.legend()
     plt.show()
     
