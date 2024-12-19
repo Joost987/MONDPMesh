@@ -135,6 +135,34 @@ class Particlelist:
         accparts = cp.zeros((len(self.list),3),dtype=np.float32)
         configure_AssignAccsGaussShape(accparts,accMONDmat,self.list,sigma,shape)
         return accparts
+
+    def EwaldCorrection(self, particlelist, accelerations, func, correction_criteria, std):
+
+        #Assume accelerations is an array of the form [[ax, ay, az], ... ]
+        acceleration_norms = cp.linalg.norm(accelerations, axis=0)
+        newtoncheck = inpol(x=acceleration_norms, func=func)
+
+
+        correction_check = cp.array([newtoncheck >= correction_criteria])[0]
+        print(correction_check)
+
+        for index1, particle1 in enumerate(particlelist):
+            if correction_check[index1] == False: continue
+            correction = cp.zeros(3)
+            for index2, particle2 in enumerate(particlelist):
+                if index1 == index2: continue
+                dist_vec = particle1[1:4] - particle2[1:4]
+                dist = cp.linalg.norm(dist_vec)
+
+                intermediatefactor = scipy.special.erf(dist/(2*std))/dist**2 \
+                                     - cp.exp(-dist**2/(4*std**2))/(cp.sqrt(cp.pi)*dist*std)
+                correction += intermediatefactor * dist_vec / dist * G * particle2[0] * cellleninv
+                #TODO: check for division by 0 issues
+                correction += (-G * particle2[0]) / dist**3 * dist_vec * cellleninv**2
+
+            accelerations[index1] += correction
+
+        return accelerations
     
     def TimeSim(self,T,dt,itersteps,EFE,free_fall,regime = 0):
         posmat = cp.zeros([len(self.list),T,3],dtype=np.float32)
