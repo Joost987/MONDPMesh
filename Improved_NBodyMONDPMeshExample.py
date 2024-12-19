@@ -164,21 +164,21 @@ class Particlelist:
 
         return accelerations
     
-    def TimeSim(self,T,dt,itersteps,EFE,free_fall,regime = 0):
-        posmat = cp.zeros([len(self.list),T,3],dtype=np.float32)
-        vecmat = cp.zeros([len(self.list),T,3],dtype=np.float32)
+    def TimeSim(self,timesteps,dt,itersteps,EFE,free_fall,regime = 0):
+        posmat = cp.zeros([len(self.list),timesteps,3],dtype=np.float32)
+        vecmat = cp.zeros([len(self.list),timesteps,3],dtype=np.float32)
 
-        MomMat = cp.zeros([T,3],dtype=np.float32)
-        AngMat = cp.zeros([T,3],dtype=np.float32)
-        EkinMat = cp.zeros([T],dtype=np.float32)
-        EgravMat = cp.zeros([T],dtype=np.float32)
-        EMat = cp.zeros([T],dtype=np.float32)
+        MomMat = cp.zeros([timesteps,3],dtype=np.float32)
+        AngMat = cp.zeros([timesteps,3],dtype=np.float32)
+        EkinMat = cp.zeros([timesteps],dtype=np.float32)
+        EgravMat = cp.zeros([timesteps],dtype=np.float32)
+        EMat = cp.zeros([timesteps],dtype=np.float32)
 
         accnew = self.UpdateAccsMOND(EFE,iterlen = 4,regime = regime)
         
-        COM = cp.zeros([7,T],dtype=np.float32)
+        COM = cp.zeros([7,timesteps],dtype=np.float32)
 
-        for t in range(T):
+        for t in range(timesteps):
             posmat[:,t,:] = self.list[:,1:4]
             vecmat[:,t,:] = self.list[:,4:7]
 
@@ -255,23 +255,23 @@ class TwoBodyParticlelist(Particlelist): #Arbitary two body system
     def EPotAna(self):
         return 2/3*cp.sqrt(G*a0)*((self.m1+self.m2)**(3/2)-self.m1**(3/2)-self.m2**(3/2))*cp.log(cp.linalg.norm(self.list[0,1:4]-self.list[1,1:4]))
     
-    def TimeSim(self,T,dt,itersteps,regime = 0):
-        posmat = cp.zeros([len(self.list),T,3])
-        vecmat = cp.zeros([len(self.list),T,3])
+    def TimeSim(self,timesteps,dt,itersteps,regime = 0):
+        posmat = cp.zeros([len(self.list),timesteps,3])
+        vecmat = cp.zeros([len(self.list),timesteps,3])
 
-        posmat2 = cp.zeros([len(self.list),T,3])
-        vecmat2 = cp.zeros([len(self.list),T,3])
+        posmat2 = cp.zeros([len(self.list),timesteps,3])
+        vecmat2 = cp.zeros([len(self.list),timesteps,3])
 
-        MomMat = cp.zeros([T,3])
-        AngMat = cp.zeros([T,3])
-        EMat = cp.zeros([T])
+        MomMat = cp.zeros([timesteps,3])
+        AngMat = cp.zeros([timesteps,3])
+        EMat = cp.zeros([timesteps])
 
-        MomMat2 = cp.zeros([T,3])
-        AngMat2 = cp.zeros([T,3])
-        EMat2 = cp.zeros([T])        
+        MomMat2 = cp.zeros([timesteps,3])
+        AngMat2 = cp.zeros([timesteps,3])
+        EMat2 = cp.zeros([timesteps])        
 
         accnew = self.UpdateAccsMOND(iterlen = 4,regime = regime)
-        for t in range(T):
+        for t in range(timesteps):
             
             posmat[:,t,:] = self.list[:,1:4]
             vecmat[:,t,:] = self.list[:,4:7]
@@ -293,7 +293,7 @@ class TwoBodyParticlelist(Particlelist): #Arbitary two body system
         self.list[:,4:7] = vecmat[:,0,:] 
         
         accnew = cp.array(self.Analyticalacc())
-        for t in range(T):
+        for t in range(timesteps):
             posmat2[:,t,:] = self.list[:,1:4]
             vecmat2[:,t,:] = self.list[:,4:7]
 
@@ -382,23 +382,23 @@ class IsoThermalParticlelist(Particlelist): #Isothermal sphere of N particles in
     def EGravAna(self): # Returns the analytical gravitational energy
         pass
     
-    def TimeSim(self,T,dt,itersteps):
-        posmat = cp.zeros([len(self.list),T,3]) # posmat = position vector
-        vecmat = cp.zeros([len(self.list),T,3]) # vecmat = velocity vector
+    def TimeSim(self,timesteps,dt,itersteps):
+        posmat = cp.zeros([len(self.list),timesteps,3]) # posmat = position vector
+        vecmat = cp.zeros([len(self.list),timesteps,3]) # vecmat = velocity vector
 
-        posmat_a = cp.zeros([len(self.list),T,3]) # posmat_a = analytical position vector
-        vecmat_a = cp.zeros([len(self.list),T,3]) # vecmat_a = analytical velocity vector
+        posmat_a = cp.zeros([len(self.list),timesteps,3]) # posmat_a = analytical position vector
+        vecmat_a = cp.zeros([len(self.list),timesteps,3]) # vecmat_a = analytical velocity vector
 
-        MomMat = cp.zeros([T,3]) # MomMat = momentum vector
-        AngMat = cp.zeros([T,3]) # AngMat = angular momentum vector
-        EMat = cp.zeros([T]) # EMat = energy
+        MomMat = cp.zeros([timesteps,3]) # MomMat = momentum vector
+        AngMat = cp.zeros([timesteps,3]) # AngMat = angular momentum vector
+        EMat = cp.zeros([timesteps]) # EMat = energy
 
-        MomMat_a = cp.zeros([T,3]) # MomMat_a = analytical momentum vector
-        AngMat_a = cp.zeros([T,3]) # AngMat_a = analytical angular momentum vector
-        EMat_a = cp.zeros([T]) # EMat_a = analytical energy      
+        MomMat_a = cp.zeros([timesteps,3]) # MomMat_a = analytical momentum vector
+        AngMat_a = cp.zeros([timesteps,3]) # AngMat_a = analytical angular momentum vector
+        EMat_a = cp.zeros([timesteps]) # EMat_a = analytical energy      
 
         accnew = self.UpdateAccsMOND(iterlen = 4)  
-        for t in range(T):
+        for t in range(timesteps):
             
             posmat[:,t,:] = self.list[:,1:4]
             vecmat[:,t,:] = self.list[:,4:7]
@@ -420,7 +420,7 @@ class IsoThermalParticlelist(Particlelist): #Isothermal sphere of N particles in
         self.list[:,4:7] = vecmat[:,0,:] 
         
         accnew = cp.array(self.Analyticalacc())
-        for t in range(T):
+        for t in range(timesteps):
             posmat_a[:,t,:] = self.list[:,1:4]
             vecmat_a[:,t,:] = self.list[:,4:7]
 
@@ -640,7 +640,7 @@ if simulate_two_bodies:
                   # 2 is by keeping the center of mass in the middle (was used in simulations), 3 is static system but each timestep the particles are placed back to the origin (not sure if correct).
     
 
-    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EgravMat_cuda,EkinMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(T,dt,iterlength,EFE_M,free_fall,regime)
+    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EgravMat_cuda,EkinMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(timesteps,dt,itersteps,EFE_M,free_fall,regime)
     posmat,vecmat,AngMat,MomMat,EkinMat,EMat,COM = posmat_cuda.get(),vecmat_cuda.get(),AngMat_cuda.get(),MomMat_cuda.get(),EkinMat_cuda.get(),EMat_cuda.get(),COM_cuda.get()
 
     
