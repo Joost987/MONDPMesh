@@ -135,6 +135,34 @@ class Particlelist:
         accparts = cp.zeros((len(self.list),3),dtype=np.float32)
         configure_AssignAccsGaussShape(accparts,accMONDmat,self.list,sigma,shape)
         return accparts
+
+    #TODO: Test this code for problems and implement in the main code
+    def EwaldCorrection(self, particlelist, accelerations, func, correction_criteria, std):
+
+        #Assume accelerations is an array of the form [[ax, ay, az], ... ]
+        acceleration_norms = cp.linalg.norm(accelerations, axis=1)
+        newtoncheck = inpol(x=acceleration_norms, func=func)
+
+        correction_check = [newtoncheck >= correction_criteria]
+
+        for index1, particle1 in enumerate(particlelist):
+            if not correction_check[index1]: continue
+            correction = cp.zeros(3)
+            for index2, particle2 in enumerate(particlelist):
+                if index1 == index2: continue
+                dist_vec = particle1[1:4] - particle2[1:4]
+                dist = cp.linalg.norm(dist_vec)
+
+                intermediatefactor = scipy.special.erf(dist/(2*std))/dist**2 \
+                                     - cp.exp(-dist**2/(4*std**2))/(cp.sqrt(np.pi)*dist*std)
+                correction += intermediatefactor * dist_vec / dist * G * particle2[0] * cellleninv
+                #TODO: check for division by 0 issues
+                correction += (-G * particle2[0]) / dist**3 * dist_vec * cellleninv**2
+
+            accelerations[index1] += correction
+
+        return accelerations
+
     
     def TimeSim(self,T,dt,itersteps,EFE,free_fall,regime = 0):
         posmat = cp.zeros([len(self.list),T,3],dtype=np.float32)
@@ -532,7 +560,7 @@ def MainLoop(H,NDacc,func,EFE): #This is the iteration loop. This calculates the
 
 #Some of the simulation parameters. You can change halfpixels, which is half the amount of pixels in one dimension of the grid
 #You can also change celllen, which is the distance between neighbouring pixels. Some other constants are defined, as this ensures that these calculations are only done once.
-halfpixels = 64 #For optimal FFT's, this has to be a power of 2. 
+halfpixels = 64 #For optimal FFT's, this has to be a power of 2.
 shape = (2*halfpixels,2*halfpixels,2*halfpixels)
 size_of_box = 4*10**15 # m
 size_of_box = 26738 # au
