@@ -15,5 +15,5 @@ Cupy, see: https://docs.cupy.dev/en/stable/install.html
 Numba, see: https://numba.pydata.org/
 
 
-
-
+![Energy figure](https://github.com/Joost987/MONDPMesh/blob/CodeJKoster/Energy.png)
+![Orbit figure](https://github.com/Joost987/MONDPMesh/blob/CodeJKoster/Orbit.png)
