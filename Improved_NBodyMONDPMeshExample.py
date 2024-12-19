@@ -594,7 +594,7 @@ for i in cp.roll(cp.arange(-halfpixels,halfpixels),halfpixels):
 
 #%% Simulating and plotting: Two bodies
 t_simulation_start = time.time()
-simulate_two_bodies = False
+simulate_two_bodies = True
 if simulate_two_bodies: 
     m1,rx1,ry1,rz1,vx1,vy1,vz1 = 1,halfpixels*6/8,halfpixels,halfpixels,halfpixels/300,halfpixels*0.5/300,0
     m2,rx2,ry2,rz2,vx2,vy2,vz2 = 2,halfpixels*9/8,halfpixels,halfpixels,-halfpixels*0.5/300,-halfpixels*0.25/300,0
@@ -608,7 +608,7 @@ if simulate_two_bodies:
     free_fall = 0 # 0 is static system, 1 is by shifting the positions each time step by 1/2*g*t^2 (not sure if correct, but may give insights into dynamics as compared to Newton dynamics)
                   # 2 is by keeping the center of mass in the middle (was used in simulations), 3 is static system but each timestep the particles are placed back to the origin (not sure if correct).
     
-    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EkinMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(T,dt,iterlength,EFE_M,free_fall,regime)
+    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EgravMat_cuda,EkinMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(T,dt,iterlength,EFE_M,free_fall,regime)
     posmat,vecmat,AngMat,MomMat,EkinMat,EMat,COM = posmat_cuda.get(),vecmat_cuda.get(),AngMat_cuda.get(),MomMat_cuda.get(),EkinMat_cuda.get(),EMat_cuda.get(),COM_cuda.get()
     
     if free_fall == 3:
