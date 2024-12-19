@@ -611,8 +611,10 @@ if simulate_two_bodies:
     free_fall = 0 # 0 is static system, 1 is by shifting the positions each time step by 1/2*g*t^2 (not sure if correct, but may give insights into dynamics as compared to Newton dynamics)
                   # 2 is by keeping the center of mass in the middle (was used in simulations), 3 is static system but each timestep the particles are placed back to the origin (not sure if correct).
     
-    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EkinMat_cuda,EgravMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(timesteps,dt,itersteps,EFE_M,free_fall,regime)
-    posmat,vecmat,AngMat,MomMat,EkinMat,EgravMat,EMat,COM = posmat_cuda.get(),vecmat_cuda.get(),AngMat_cuda.get(),MomMat_cuda.get(),EkinMat_cuda.get(),EgravMat_cuda.get(),EMat_cuda.get(),COM_cuda.get()
+
+    posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EgravMat_cuda,EkinMat_cuda,EMat_cuda,COM_cuda = particlelist.TimeSim(T,dt,iterlength,EFE_M,free_fall,regime)
+    posmat,vecmat,AngMat,MomMat,EkinMat,EMat,COM = posmat_cuda.get(),vecmat_cuda.get(),AngMat_cuda.get(),MomMat_cuda.get(),EkinMat_cuda.get(),EMat_cuda.get(),COM_cuda.get()
+
     
     if free_fall == 3:
         posmat_cuda,vecmat_cuda,AngMat_cuda,MomMat_cuda,EkinMat_cuda,EgravMat_cuda,EMat_cuda = COMConverter(particlelist,posmat_cuda,vecmat_cuda,COM_cuda)
