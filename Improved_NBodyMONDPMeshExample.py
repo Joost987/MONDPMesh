@@ -159,7 +159,6 @@ class Particlelist:
         # Assume accelerations is an array of the form [[ax, ay, az], ... ]
         acceleration_norms = cp.sqrt(cp.sum(accelerations ** 2, axis=1))
         newtoncheck = inpol(x=acceleration_norms, func=func)
-        print(newtoncheck)
 
         correction_check = cp.array([newtoncheck >= correction_criteria])[0]
 
@@ -633,7 +632,7 @@ def MainLoop(H, NDacc, func,
 
 # Some of the simulation parameters. You can change halfpixels, which is half the amount of pixels in one dimension of the grid
 # You can also change celllen, which is the distance between neighbouring pixels. Some other constants are defined, as this ensures that these calculations are only done once.
-halfpixels = 32 #For optimal FFT's, this has to be a power of 2.
+halfpixels = 64 #For optimal FFT's, this has to be a power of 2.
 shape = (2*halfpixels,2*halfpixels,2*halfpixels)
 size_of_box = 4*10**15 # m
 size_of_box = 26738 # au
