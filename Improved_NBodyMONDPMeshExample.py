@@ -157,11 +157,11 @@ class Particlelist:
     def NewtonCorrection(self, particlelist, accelerations, func, correction_criteria, std):
 
         # Assume accelerations is an array of the form [[ax, ay, az], ... ]
-        acceleration_norms = cp.linalg.norm(accelerations, axis=0)
+        acceleration_norms = cp.sqrt(cp.sum(accelerations ** 2, axis=1))
         newtoncheck = inpol(x=acceleration_norms, func=func)
+        print(newtoncheck)
 
         correction_check = cp.array([newtoncheck >= correction_criteria])[0]
-        print(correction_check)
 
         for index1, particle1 in enumerate(particlelist):
             if correction_check[index1] == False: continue
@@ -199,6 +199,7 @@ class Particlelist:
         COM = cp.zeros([7, timesteps], dtype=np.float32)
 
         for t in range(timesteps):
+
             posmat[:, t, :] = self.list[:, 1:4]
             vecmat[:, t, :] = self.list[:, 4:7]
 
@@ -218,6 +219,9 @@ class Particlelist:
             try:  # If the particles are outside of the grid this will raise an error. This catches this error
                 # and breaks the loop, ensuring that the data from before the error can be returned.
                 accnew = self.UpdateAccsMOND(EFE, iterlen=itersteps, regime=regime)
+                if allowNewtonCorrections:
+                    # TODO: explain the 0.99.
+                    accnew = self.NewtonCorrection(self.list, accnew, regime, 0.99, 1)
             except:  # different ways of handling this exception can be made. For the isothermal sphere for example
                 # the particles will enter
                 print("particle outside box")
@@ -297,7 +301,6 @@ class TwoBodyParticlelist(Particlelist):  # Arbitary two body system
 
         accnew = self.UpdateAccsMOND(iterlen=4, regime=regime)
         for t in range(timesteps):
-
             posmat[:, t, :] = self.list[:, 1:4]
             vecmat[:, t, :] = self.list[:, 4:7]
 
@@ -630,38 +633,39 @@ def MainLoop(H, NDacc, func,
 
 # Some of the simulation parameters. You can change halfpixels, which is half the amount of pixels in one dimension of the grid
 # You can also change celllen, which is the distance between neighbouring pixels. Some other constants are defined, as this ensures that these calculations are only done once.
-halfpixels = 64  # For optimal FFT's, this has to be a power of 2.
-shape = (2 * halfpixels, 2 * halfpixels, 2 * halfpixels)
-size_of_box = 4 * 10 ** 15  # m
-size_of_box = 26738  # au
-size_of_box = 1  # ly
-celllen = size_of_box / (2 * halfpixels)
-cellleninv = 1 / celllen
-size = halfpixels * celllen
-kstep = cp.pi / (halfpixels * celllen)
-kstep2inv = 1 / kstep ** 2
+halfpixels = 32 #For optimal FFT's, this has to be a power of 2.
+shape = (2*halfpixels,2*halfpixels,2*halfpixels)
+size_of_box = 4*10**15 # m
+size_of_box = 26738 # au
+size_of_box = 1 # ly
+celllen = size_of_box/(2*halfpixels)
+cellleninv = 1/celllen
+size = halfpixels*celllen
+kstep = cp.pi/(halfpixels*celllen)
+kstep2inv = 1/kstep**2
 
-cellvolume = celllen ** 3
-cellvolumeinv = 1 / cellvolume
-oversqrt2pi = 1 / cp.sqrt(2 * cp.pi)
-oversqrt2pi3 = oversqrt2pi ** 3
+cellvolume = celllen**3
+cellvolumeinv = 1/cellvolume
+oversqrt2pi = 1/cp.sqrt(2*cp.pi)
+oversqrt2pi3 = oversqrt2pi**3
 
 ball4 = FindBall(4)
 
-timesteps = 1000  # total number of timesteps
+timesteps = 1000 # total number of timesteps
 # T is total simulated time
-T = 400  # kyr (Alpha Centauri AB has oribtal period of about 80 kyr)
-T = 0.4  # Myr
-dt = T / timesteps
+T = 400 # kyr (Alpha Centauri AB has oribtal period of about 80 kyr)
+T = 0.4 # Myr
+dt = T/timesteps
 
-# Some physical constants
-G = 6.674 * 10 ** (-11)  # m^3/(s^2*kg)
-G = 3.942 * 10 ** 7  # au^3/(kyr^2*M☉)
-G = 0.156  # ly^3/(Myr^2*M☉)
-c = 4 * cp.pi * G
-a0 = 1.2 * 10 ** (-10)  # m/s^2
-a0 = 0.7978  # au/kyr^2
-a0 = 12.614  # ly/Myr^2
+#Some physical constants
+G = 6.674*10**(-11) # m^3/(s^2*kg)
+G = 3.942*10**7 # au^3/(kyr^2*M☉)
+G = 0.156 # ly^3/(Myr^2*M☉)
+c = 4*cp.pi*G
+a0 = 1.2*10**(-10) # m/s^2
+a0 = 0.7978 # au/kyr^2
+a0 = 12.614 #ly/Myr^2
+
 
 # a0 = 1.2*10^-10 m/s^2 = 0.7978 au/kyr^2 = 12.614 Mly/Gyr^2
 # Acceleration from Milky Way on Sun = 3.47*10^-9 m/s^2 = 23.07 au/kyr^2 = 364.8 Mly/Gyr^2
@@ -695,7 +699,7 @@ for i in cp.roll(cp.arange(-halfpixels, halfpixels), halfpixels):
 # %% Simulating and plotting: Two bodies
 t_simulation_start = time.time()
 simulate_two_bodies = True
-allowNewtonCorrections = True
+allowNewtonCorrections = False
 if simulate_two_bodies:
     m1, rx1, ry1, rz1, vx1, vy1, vz1 = 1, halfpixels * 6 / 8, halfpixels, halfpixels, halfpixels, halfpixels, 0
     m2, rx2, ry2, rz2, vx2, vy2, vz2 = 2, halfpixels * 9 / 8, halfpixels, halfpixels, -halfpixels, -halfpixels, 0
