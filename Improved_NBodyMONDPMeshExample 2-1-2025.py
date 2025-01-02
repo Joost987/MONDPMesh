@@ -575,8 +575,10 @@ def EGrav(accMONDmat,F,func):
     if func == 1:
         EGrav = cp.sum((x*cp.sqrt(1+x**2)-cp.arcsinh(x))/2)
     if func == 2:
-        V_prime = lambda y0: y0/(1-cp.exp(-cp.sqrt(y0)))
-        EGravPot = cp.sum(scipy.integrate.odeint(V_prime,0,cp.append(cp.array([0]),cp.sort(y.flatten()))))
+        V_prime = lambda y0: y0/(1-cp.exp(-cp.sqrt(y0))) #We numerically integrate V_prime over y to find V. Afterwards we integrate V over space to find E_grav+E_pot. The numerical integration over y is done by first 
+        EGravPot = cp.sum(scipy.integrate.odeint(V_prime,0,cp.append(cp.array([0]),cp.sort(y.flatten())),tfirst=True)[0]) #sorting the y array. As we will integrate over real spaces, the order of the y array does not matter
+                                                                                                        #Then we solve the ode dV/dy=V_prime. Scipy will solve this ode and give us the value of the integral for all points
+                                                                                                        #specified.
     if func == 3:
         EGrav = cp.sum(x**2/2+(x+1)*cp.exp(-x))
     if func == 4:
