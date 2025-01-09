@@ -9,6 +9,7 @@ import scipy
 import pyfftw
 import matplotlib.pyplot as plt
 from numba import cuda
+import scipy.optimize
 
 
 
@@ -543,7 +544,7 @@ def KdotProd(
 def inpol(x, func):  # Interpolation function \mu
     if func == 0: return x  # Deepmond
     if func == 1: return x / cp.sqrt(1 + x ** 2)  # Standard
-    if func == 2: return FindMu(lambda y: inpolinv(y, func), x)["x"]  # McGaugh
+    if func == 2: return FindMu(lambda y: inpolinv(y, func), x)  # McGaugh
     if func == 3: return 1 - cp.exp(-x)  # Bose-Einstein
     if func == 4: return 4*x/(1+cp.sqrt(1+4*x))**2 # Verlinde
     if func == 5: return 1  # Newton
@@ -552,18 +553,21 @@ def inpol(x, func):  # Interpolation function \mu
 def inpolinv(y, func):  # Inverse interpolation function \nu
     if func == 0: return 1 / cp.sqrt(y)  # Deepmond
     if func == 1: return cp.sqrt(1 / 2 + 1 / 2 * cp.sqrt(1 + 4 / y ** 2))  # Standard
-    if func == 2: return 1 / (1 - cp.exp(-cp.sqrt(y)))  # McGaugh
-    if func == 3: return FindNu(lambda x: inpol(x, func), y)["x"]  # Bose-Einstein
+    if func == 2: return 1 / (1 - np.exp(-np.sqrt(y)))  # McGaugh
+    if func == 3: return FindNu(lambda x: inpol(x, func), y)  # Bose-Einstein
     if func == 4: return 1 + 1/cp.sqrt(y) # Verlinde
     if func == 5: return 1  # Newton
 
 
+
 def FindMu(nu, x, tol=1e-3):
-    return scipy.optimize.root(lambda mu: mu * nu(x * mu) - 1, x, tol=tol)
+    x=x.get()
+    return cp.asarray(scipy.optimize.newton(lambda mu: mu * nu(x * mu) - 1, x, tol=tol))
 
 
 def FindNu(mu, y, tol=1e-3):
-    return scipy.optimize.root(lambda nu: nu * mu(y * nu) - 1, np.sqrt(1 / y), tol=tol)
+    x=x.get()
+    return cp.asarray(scipy.optimize.newton(lambda nu: nu * mu(y * nu) - 1, np.sqrt(1 / y), tol=tol))
 
 def EGrav(accMONDmat,F,func):
     EGrav = 0
@@ -575,10 +579,12 @@ def EGrav(accMONDmat,F,func):
     if func == 1:
         EGrav = cp.sum((x*cp.sqrt(1+x**2)-cp.arcsinh(x))/2)
     if func == 2:
-        V_prime = lambda y0: y0/(1-cp.exp(-cp.sqrt(y0))) #We numerically integrate V_prime over y to find V. Afterwards we integrate V over space to find E_grav+E_pot. The numerical integration over y is done by first 
-        EGravPot = cp.sum(scipy.integrate.odeint(V_prime,0,cp.append(cp.array([0]),cp.sort(y.flatten())),tfirst=True)[0]) #sorting the y array. As we will integrate over real spaces, the order of the y array does not matter
+        eps=1e-8
+        V_prime = lambda y0,V: y0/(1-np.exp(-np.sqrt(y0))) #We numerically integrate V_prime over y to find V. Afterwards we integrate V over space to find E_grav+E_pot. The numerical integration over y is done by first 
+        y=y.get()
+        EGravPot = np.sum(scipy.integrate.odeint(V_prime,eps,np.append(np.array(eps),np.sort(y.flatten())),atol=1e-9,tfirst=True)[0]) #sorting the y array. As we will integrate over real spaces, the order of the y array does not matter
                                                                                                         #Then we solve the ode dV/dy=V_prime. Scipy will solve this ode and give us the value of the integral for all points
-                                                                                                        #specified.
+        EGravPot=cp.asarray(EGravPot)                                                                                                #specified.
     if func == 3:
         EGrav = cp.sum(x**2/2+(x+1)*cp.exp(-x))
     if func == 4:
@@ -733,7 +739,7 @@ if simulate_two_bodies:
 
     EFE_M = [EFE_on, EFE_M_strength];
     itersteps = 4;
-    regime = 1 #TODO: regime 2 cpu/gpu
+    regime = 2 #TODO: regime 2 cpu/gpu
     free_fall = 0  # 0 is static system, 1 is by shifting the positions each time step by 1/2*g*t^2 (not sure if correct, but may give insights into dynamics as compared to Newton dynamics)
     # 2 is by keeping the center of mass in the middle (was used in simulations), 3 is static system but each timestep the particles are placed back to the origin (not sure if correct).
 
