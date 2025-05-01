@@ -453,29 +453,29 @@ class IsoThermalParticlelist(
         self.m = M  # Total mass
         self.b = b  # Effective radius
         self.N = N  # Number of particles
-        self.v2 = cp.sqrt(G * a0 * self.m) / 3 * cellleninv ** 2 * 2  # Variance in velocity
-        [eta1, eta2, eta3] = [cp.random.uniform(low=0, high=1, size=N) for i in [0, 1, 2]]
-        [zeta1, zeta2, zeta3] = [cp.random.uniform(low=0, high=2 * cp.pi, size=N) for i in [0, 1, 2]]
-        xi = cp.random.uniform(low=-1, high=1, size=N)
+        self.v2 = np.sqrt(G * a0 * self.m) / 3 * cellleninv ** 2 * 2  # Variance in velocity
+        [eta1, eta2, eta3] = [np.random.uniform(low=0, high=1, size=N) for i in [0, 1, 2]]
+        [zeta1, zeta2, zeta3] = [np.random.uniform(low=0, high=2 * np.pi, size=N) for i in [0, 1, 2]]
+        xi = np.random.uniform(low=-1, high=1, size=N)
 
         # rvec: position of particle
         # vvec: velocity of particle
-        rvec = cp.transpose(cp.array([[halfpixels] * 3] * N)) + b * (1 / cp.sqrt(eta1) - 1) ** (-2 / 3) * cp.array(
-            [(cp.sqrt(1 - xi ** 2)) * cp.cos(zeta1), (cp.sqrt(1 - xi ** 2)) * cp.sin(zeta1), xi])
-        vvec = (cp.array([cp.sqrt(-1 / 1.5 * self.v2 * cp.log(eta2)) * cp.cos(zeta2),
-                          cp.sqrt(-1 / 1.5 * self.v2 * cp.log(eta2)) * cp.sin(zeta2),
-                          cp.sqrt(-1 / 1.5 * self.v2 * cp.log(eta3)) * cp.cos(zeta3)]))
+        rvec = np.transpose(np.array([[halfpixels] * 3] * N)) + b * (1 / np.sqrt(eta1) - 1) ** (-2 / 3) * np.array(
+            [(np.sqrt(1 - xi ** 2)) * np.cos(zeta1), (np.sqrt(1 - xi ** 2)) * np.sin(zeta1), xi])
+        vvec = (np.array([np.sqrt(-1 / 1.5 * self.v2 * np.log(eta2)) * np.cos(zeta2),
+                          np.sqrt(-1 / 1.5 * self.v2 * np.log(eta2)) * np.sin(zeta2),
+                          np.sqrt(-1 / 1.5 * self.v2 * np.log(eta3)) * np.cos(zeta3)]))
         particlelist = [[m, rvec[0, i], rvec[1, i], rvec[2, i], vvec[0, i], vvec[1, i], vvec[2, i]] for i in
-                        range(cp.shape(rvec)[1])]
+                        range(np.shape(rvec)[1])]
 
         particlelist2 = []
         for part in particlelist:  # All particles inside the grid are selected
-            if cp.abs(part[1]) < 2 * halfpixels - 4 and cp.abs(part[2]) < 2 * halfpixels - 4 and cp.abs(
+            if np.abs(part[1]) < 2 * halfpixels - 4 and np.abs(part[2]) < 2 * halfpixels - 4 and np.abs(
                     part[3]) < 2 * halfpixels - 4:  # we need to subtract 4 to account for the smoothing
                 particlelist2.append(part)
 
-        particlelist = cp.array(particlelist2)
-        self.list = particlelist
+        particlelist = np.array(particlelist2)
+        self.list = cp.array(particlelist)
 
     def Analyticalacc(self):  # Returns the analytical acceleration
         rvec = self.list[:, 1:4]
