@@ -538,7 +538,7 @@ class IsoThermalParticlelist(
 
                 AngMat_a[t, :] = self.AngMom()
                 MomMat_a[t, :] = cp.transpose(self.list[:, 4:7]) @ self.list[:, 0]
-                EMat_a[t] = self.Ekin() + self.EPotAna() + self.EGravAna()
+                #EMat_a[t] = self.Ekin() + self.EPotAna() + self.EGravAna()
 
                 accold = accnew
                 self.list[:, 1:4] += self.list[:,
