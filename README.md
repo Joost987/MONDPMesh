@@ -10,7 +10,6 @@ Please message me if you find any errors or bugs.
 
 Required libraries:
 Numpy, math, itertools, these are all included in base Python.
-Pyfftw, which needs the C FFTW library. Its documentation can be found in https://pyfftw.readthedocs.io/en/latest/. 
 Cupy, see: https://docs.cupy.dev/en/stable/install.html
 Numba, see: https://numba.pydata.org/
 
