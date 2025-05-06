@@ -493,7 +493,7 @@ class IsoThermalParticlelist(
     def EGravAna(self):  # Returns the analytical gravitational energy
         pass
 
-    def TimeSim(self, timesteps, dt, itersteps):
+    def TimeSim(self, timesteps, dt, itersteps, EFE):
         posmat = cp.zeros([len(self.list), timesteps, 3])  # posmat = position vector
         vecmat = cp.zeros([len(self.list), timesteps, 3])  # vecmat = velocity vector
 
@@ -508,7 +508,7 @@ class IsoThermalParticlelist(
         AngMat_a = cp.zeros([timesteps, 3])  # AngMat_a = analytical angular momentum vector
         EMat_a = cp.zeros([timesteps])  # EMat_a = analytical energy
 
-        accnew = self.UpdateAccsMOND(iterlen=4)
+        accnew = self.UpdateAccsMOND(EFE,iterlen=4)
         for t in range(timesteps):
 
             posmat[:, t, :] = self.list[:, 1:4]
@@ -522,30 +522,32 @@ class IsoThermalParticlelist(
             self.list[:, 1:4] += self.list[:,
                                  4:7] * dt + 0.5 * accold * cellleninv * dt ** 2  # Leapfrog without half integer time steps
             try:
-                accnew = self.UpdateAccsMOND(iterlen=itersteps)
+                accnew = self.UpdateAccsMOND(EFE,iterlen=itersteps)
             except:
                 self.list[:, 1:4] = self.list[:, 1:4] % (2 * halfpixels - 4)
-                accnew = self.UpdateAccsMOND(iterlen=itersteps)
+                accnew = self.UpdateAccsMOND(EFE,iterlen=itersteps)
             self.list[:, 4:7] += (accold + accnew) * 0.5 * dt * cellleninv
 
         self.list[:, 1:4] = posmat[:, 0, :]
         self.list[:, 4:7] = vecmat[:, 0, :]
-
-        accnew = cp.array(self.Analyticalacc())
-        for t in range(timesteps):
-            posmat_a[:, t, :] = self.list[:, 1:4]
-            vecmat_a[:, t, :] = self.list[:, 4:7]
-
-            AngMat_a[t, :] = self.AngMom()
-            MomMat_a[t, :] = cp.transpose(self.list[:, 4:7]) @ self.list[:, 0]
-            EMat_a[t] = self.Ekin() + self.EPotAna() + self.EGravAna()
-
-            accold = accnew
-            self.list[:, 1:4] += self.list[:,
-                                 4:7] * dt + 0.5 * accold * cellleninv * dt ** 2  # Leapfrog without half integer time steps
+        if not EFE:
             accnew = cp.array(self.Analyticalacc())
-            self.list[:, 4:7] += (accold + accnew) * 0.5 * dt * cellleninv
-            if t % 25 == 0: print(t)
+            for t in range(timesteps):
+                posmat_a[:, t, :] = self.list[:, 1:4]
+                vecmat_a[:, t, :] = self.list[:, 4:7]
+
+                AngMat_a[t, :] = self.AngMom()
+                MomMat_a[t, :] = cp.transpose(self.list[:, 4:7]) @ self.list[:, 0]
+                EMat_a[t] = self.Ekin() + self.EPotAna() + self.EGravAna()
+
+                accold = accnew
+                self.list[:, 1:4] += self.list[:,
+                                    4:7] * dt + 0.5 * accold * cellleninv * dt ** 2  # Leapfrog without half integer time steps
+                accnew = cp.array(self.Analyticalacc())
+                self.list[:, 4:7] += (accold + accnew) * 0.5 * dt * cellleninv
+                if t % 25 == 0: print(t)
+        else:
+            print("Analytical simulation does not work with external field effect!")
 
         return posmat, vecmat, AngMat, MomMat, EMat, posmat_a, vecmat_a, AngMat_a, MomMat_a, EMat_a
 
