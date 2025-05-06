@@ -530,7 +530,7 @@ class IsoThermalParticlelist(
 
         self.list[:, 1:4] = posmat[:, 0, :]
         self.list[:, 4:7] = vecmat[:, 0, :]
-        if not EFE:
+        if not EFE[0]:
             accnew = cp.array(self.Analyticalacc())
             for t in range(timesteps):
                 posmat_a[:, t, :] = self.list[:, 1:4]
