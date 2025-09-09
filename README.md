@@ -17,6 +17,7 @@ The following are included in base Python:
 
 
 * Cupy, see: https://docs.cupy.dev/en/stable/install.html
+  
 We use Cupy to do calculations on the GPU; it is essentially numpy except it works on the GPU, using CUDA.
 
 * Numba, see: https://numba.pydata.org/
