@@ -9,9 +9,17 @@ Please message me if you find any errors or bugs.
 
 
 Required libraries:
-Numpy, math, itertools, these are all included in base Python.
-Cupy, see: https://docs.cupy.dev/en/stable/install.html
-Numba, see: https://numba.pydata.org/
+
+The following are included in base Python:
+* Numpy,
+* math,
+* itertools, 
+
+
+* Cupy, see: https://docs.cupy.dev/en/stable/install.html
+We use Cupy to do calculations on the GPU; it is essentially numpy except it works on the GPU, using CUDA.
+
+* Numba, see: https://numba.pydata.org/
 
 
 ![Energy figure](https://github.com/Joost987/MONDPMesh/blob/CodeJKoster/Energy.png)
