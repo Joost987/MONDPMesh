@@ -15,12 +15,12 @@ The following are included in base Python:
 * math,
 * itertools, 
 
+We use Cupy to do calculations on the GPU; it is essentially numpy except it works on the GPU, using CUDA. 
 
-* Cupy, see: https://docs.cupy.dev/en/stable/install.html
+* Cupy, for the installation see: https://docs.cupy.dev/en/stable/install.html
   
-We use Cupy to do calculations on the GPU; it is essentially numpy except it works on the GPU, using CUDA.
-
-* Numba, see: https://numba.pydata.org/
+We use Numba for JIT compilation.
+* Numba, for the installation see: https://numba.pydata.org/
 
 
 ![Energy figure](https://github.com/Joost987/MONDPMesh/blob/CodeJKoster/Energy.png)
