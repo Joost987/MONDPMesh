@@ -811,3 +811,4 @@ if simulate_two_bodies:
     plt.savefig("Energy.pdf")
     plt.legend()
     plt.show()
+
