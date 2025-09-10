@@ -38,7 +38,8 @@ We use Numba for JIT compilation.
 # Advantages:
 * FFT's are implemented using Cupy, allowing us to use the GPU to compute them. This speeds up the code by a lot.
 * Conversion between particles and the mass density or acceleration on the grid has been parallelised and Just-In-Time (JIT) compiled, meaning that high particle numbers can be simulated faster.
-
+* Algorithm has complexity N log(N)+n for N cells and n particles
+  
 # Disadvantages:
 * Periodic boundary conditions often require putting the system in a large empty volume
 * Mesh refinement is not possible; hence a large number of cells are needed
