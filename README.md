@@ -62,8 +62,8 @@ Inclusion of physical effects:
 
 The following figure shows the energies for a two particle simulation. The energies are: total energy (blue), kinetic energy (orange), gravitational energy (green), potential energy (red). 
 
-![Energy figure](https://github.com/Joost987/MONDPMesh/blob/CodeJKoster/Energy.png)
+![Energy figure](https://github.com/Joost987/MONDPMesh/blob/main/Energy2.png)
 
 The next figure shows the orbits of the two particles.
 
-![Orbit figure](https://github.com/Joost987/MONDPMesh/blob/CodeJKoster/Orbit.png)
+![Orbit figure](https://github.com/Joost987/MONDPMesh/blob/main/Orbit2.png)
