@@ -28,12 +28,16 @@ The following are included in base Python:
 * math,
 * itertools, 
 
-We use Cupy to do calculations on the GPU; it is essentially numpy except it works on the GPU, using CUDA. 
+Now there are two versions of the code, one that runs mainly on the GPU and one that runs only on the CPU. The start of the title of the code reflects this. 
+
+For the GPU version, the following libraries are additionally needed.
 
 * Cupy, for the installation see: https://docs.cupy.dev/en/stable/install.html
-  
-We use Numba for JIT compilation.
 * Numba, for the installation see: https://numba.pydata.org/
+
+  
+We use Cupy to do calculations on the GPU; it is essentially numpy except it works on the GPU, using CUDA. 
+We use Numba for JIT compilation.
 
 # Advantages:
 * FFT's are implemented using Cupy, allowing us to use the GPU to compute them. This speeds up the code by a lot.
