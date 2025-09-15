@@ -37,11 +37,12 @@ a0 = 1.2*10**(-10) # m/s^2
 a0 = 0.7978 # au/kyr^2
 a0 = 12.614 #ly/Myr^2
 
+
 EFE_on = False #External field effect on or off
 EFE_M_strength = 1 * a0  # au/kyr^2
 
 EFE_M = [EFE_on, EFE_M_strength];
-itersteps = 4;
+itersteps = 4; #Number of iterations used for the potential. 
 regime = 3 #Which interpolation function should be used?
 #Different values for regime parameter
 #0: Deep MOND
@@ -761,7 +762,7 @@ if simulate_two_bodies:
 
     m1, rx1, ry1, rz1, vx1, vy1, vz1 = 10, halfpixels * 6 / 8, halfpixels, halfpixels, halfpixels, halfpixels, 0
     m2, rx2, ry2, rz2, vx2, vy2, vz2 = 20, halfpixels * 9 / 8, halfpixels, halfpixels, -halfpixels, -halfpixels, 0
-
+    
     particlelist = TwoBodyCircParticlelist(m1,m2,0.5*halfpixels,0)
 
     posmat_cuda, vecmat_cuda, AngMat_cuda, MomMat_cuda, EkinMat_cuda, EgravMat_cuda, EMat_cuda, COM_cuda = particlelist.TimeSim(timesteps, dt, itersteps, EFE_M, free_fall, regime)
@@ -811,4 +812,5 @@ if simulate_two_bodies:
     plt.savefig("Energy.pdf")
     plt.legend()
     plt.show()
+
 
