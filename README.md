@@ -56,7 +56,6 @@ Numerical:
 * Using real-to-complex FFT's
   
 Inclusion of physical effects:
-* Support for more interpolation functions. The part of the code that supported this was broken when converting to JAX.
 * Include tidal field of the Milky Way, or arbitrary external field
 * Include Coriolis and centrifugal force for rotating systems
 * Collision detection
