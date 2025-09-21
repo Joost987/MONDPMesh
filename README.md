@@ -6,9 +6,9 @@ This code uses an altered particle mesh method to solve the Poisson equation of 
 
 Their theses can be found here:
 
-*http://resolver.tudelft.nl/uuid:ad94e143-0ce4-4b17-8a72-54ab9f656236
-*https://resolver.tudelft.nl/uuid:c0132153-01e6-460c-83e0-fd7b625719d7
-*https://repository.tudelft.nl/record/uuid:c52b411f-2779-4ea8-b85c-dfe2cce5e17f
+* http://resolver.tudelft.nl/uuid:ad94e143-0ce4-4b17-8a72-54ab9f656236
+* https://resolver.tudelft.nl/uuid:c0132153-01e6-460c-83e0-fd7b625719d7
+* https://repository.tudelft.nl/record/uuid:c52b411f-2779-4ea8-b85c-dfe2cce5e17f
 
 The method was developed in a paper by P.M. Visser, S.W.H. Eijt and J.V. de Nijs: 	https://doi.org/10.1051/0004-6361/202347830. Note that the code used in the paper is the code in Joost's branch. The code in this branch is an improved version.
 
