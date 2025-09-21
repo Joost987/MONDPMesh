@@ -39,16 +39,18 @@ EFE_M_strength = 1 * a0  # au/kyr^2
 
 EFE_M = (EFE_on, EFE_M_strength);
 itersteps = 4; #Number of iterations used for the potential. 
-regime = 0 #Which interpolation function should be used? Regime 2,3 don't work currently.
+regime = 3 #Which interpolation function should be used? Regime 2,3 don't work currently.
 #Different values for regime parameter
 #0: Deep MOND
 #1: Standard
-#2: McGaugh
-#3: Bose-Einstein
+#2: McGaugh (Slower)
+#3: Bose-Einstein (Slower)
 #4: Verlinde
 #5: Newton
-#TODO: regime 2 cu/gpu 
-#TODO: regime 2,3 don't work currently, need to implement a jax compatible root finder for FindMu, FindNu
+
+#2,3 are slower as either the interpolation function, or its inverse, does not have an expression in terms of elementary functions
+# These are therefore calculated using a Newton Raphson method, which is of course slower than using an elementary function 
+#TODO: regime 2 does not work currently, because the calculation of EGrav is not Jax compatible
 
 
 c = 4*jnp.pi*G
@@ -652,7 +654,7 @@ def KdotProd(
 def inpol(x, func):  # Interpolation function \mu
     if func == 0: return x  # Deepmond
     if func == 1: return x / jnp.sqrt(1 + x ** 2)  # Standard
-    if func == 2: return FindMu(lambda y: inpolinv(y, func), x)  # McGaugh
+    if func == 2: return FindMu(lambda y: inpolinv(y, func), lambda y: der_inpolinv(y,func), x)  # McGaugh
     if func == 3: return 1 - jnp.exp(-x)  # Bose-Einstein
     if func == 4: return 4*x/(1+jnp.sqrt(1+4*x))**2 # Verlinde
     if func == 5: return 1  # Newton
@@ -661,19 +663,57 @@ def inpol(x, func):  # Interpolation function \mu
 def inpolinv(y, func):  # Inverse interpolation function \nu
     if func == 0: return 1 / jnp.sqrt(y)  # Deepmond
     if func == 1: return jnp.sqrt(1 / 2 + 1 / 2 * jnp.sqrt(1 + 4 / y ** 2))  # Standard
-    if func == 2: return 1 / (1 - jnp.exp(-np.sqrt(y)))  # McGaugh
-    if func == 3: return FindNu(lambda x: inpol(x, func), y)  # Bose-Einstein
+    if func == 2: return 1 / (1 - jnp.exp(-jnp.sqrt(y)))  # McGaugh
+    if func == 3: return FindNu(lambda x: inpol(x, func), lambda x: der_inpol(x,func), y)  # Bose-Einstein
     if func == 4: return 1 + 1/jnp.sqrt(y) # Verlinde
     if func == 5: return 1  # Newton
 
+#IMPORTANT: If you add interpolation functions or inverse interpolation function where the other is not known
+#and you want to use the Newton Raphson method, you should first check that their derivative is never 0.
+#Else, if the initial value for the Newton Raphson method gives derivative 0, the method will not converge.
+
+def der_inpol(x,func): #Derivative of interpolation function \mu. Only needed when \nu does not have an explicit expression
+    if func==3: return jnp.exp(-x)
+
+def der_inpolinv(y,func): #Derivative of inverse interpolation function \nu. Only needed when \mu does not have an explicit expression
+    if func==2: return - jnp.exp(-jnp.sqrt(y))/(2*jnp.sqrt(y)*(1-jnp.exp(-jnp.sqrt(y))))
 
 
-def FindMu(nu, x, tol=1e-3):
-    return jnp.asarray(scipy.optimize.newton(lambda mu: mu * nu(x * mu) - 1, x, tol=tol))
+
+def NewtonRaphson(func,derfunc,init,rtol=1e-3,max_iterations=20):
+
+    def cond(state):
+        currval,initfunc,init,counter=state
+        return jnp.logical_and(jnp.all(jnp.abs(currval/initfunc)>rtol), counter<max_iterations)
+    
+    def body(state):
+        currval,initfunc,init,counter=state
+        derivative=derfunc(init)
+        init=init-currval/derivative
+        currval=func(init)
+        counter+=1
+        return currval,initfunc,init,counter
+
+    initfunc=func(init)
+    currval=initfunc
+    counter=jnp.array(0)
+
+    currval,initfunc,init,counter=jax.lax.while_loop(cond,body,(currval,initfunc,init,counter))
+
+    return init
+#def FindMu(nu, x, tol=1e-3):
+  #  return jnp.asarray(scipy.optimize.newton(lambda mu: mu * nu(x * mu) - 1, x, tol=tol))
+
+def FindMu(nu, der_nu, x, tol=1e-3):
+    return NewtonRaphson(lambda mu: mu * nu(x * mu) - 1, lambda mu: nu(x * mu)+mu * der_nu(x * mu) * x , rtol=tol,max_iterations=20)
 
 
-def FindNu(mu, y, tol=1e-3):
-    return jnp.asarray(scipy.optimize.newton(lambda nu: nu * mu(y * nu) - 1, np.sqrt(1 / y), tol=tol))
+#def FindNu(mu, y, tol=1e-3):
+   # return jnp.asarray(scipy.optimize.newton(lambda nu: nu * mu(y * nu) - 1, jnp.sqrt(1 / y), tol=tol))
+
+
+def FindNu(mu, der_mu, y, tol=1e-3):
+    return NewtonRaphson(lambda nu: nu * mu(y * nu) - 1, lambda nu: mu(y * nu)+nu * der_mu(y * nu) * y ,jnp.sqrt(1 / y), rtol=tol,max_iterations=20)
 
 
 def EGrav(accMONDmat,F,func):
@@ -848,8 +888,9 @@ if simulate_two_bodies:
     plt.plot(t_arr, EMat - EkinMat - EgravMat, label="E Pot", zorder=1)
     plt.xlabel("Time (Myr)");
     plt.ylabel("Energy")
-    plt.savefig("Energy.pdf")
     plt.legend()
+    plt.savefig("Energy.pdf")
+
     plt.show()
 
 
