@@ -50,7 +50,8 @@ regime = 3 #Which interpolation function should be used? Regime 2,3 don't work c
 
 #2,3 are slower as either the interpolation function, or its inverse, does not have an expression in terms of elementary functions
 # These are therefore calculated using a Newton Raphson method, which is of course slower than using an elementary function 
-#TODO: regime 2 does not work currently, because the calculation of EGrav is not Jax compatible
+#For regime 2, the gravitational energy calculation has not been implemented, and EGrav=0 is used everywhere.
+
 
 
 c = 4*jnp.pi*G
@@ -728,7 +729,7 @@ def EGrav(accMONDmat,F,func):
     if func == 2:
         eps=1e-8
         V_prime = lambda y0,V: y0/(1-np.exp(-np.sqrt(y0))) 
-        EGravPot = np.sum(scipy.integrate.odeint(V_prime,eps,np.append(np.array(eps),np.sort(y.flatten())),tfirst=True)) 
+        EGravPot = 0#np.sum(scipy.integrate.odeint(V_prime,eps,np.append(np.array(eps),np.sort(y.flatten())),tfirst=True)) 
         #We numerically integrate V_prime over y to find V. Afterwards we integrate V over space to find E_grav+E_pot. 
         #The numerical integration over y is done by first sorting the y array. As we will integrate over real spaces, the order of the y array does not matter
         #Then we solve the ode dV/dy=V_prime. Scipy will solve this ode and give us the value of the integral for all points
@@ -892,5 +893,6 @@ if simulate_two_bodies:
     plt.savefig("Energy.pdf")
 
     plt.show()
+
 
 
