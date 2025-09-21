@@ -28,19 +28,14 @@ The following are included in base Python:
 * math,
 * itertools, 
 
-Now there are two versions of the code, one that runs mainly on the GPU and one that runs only on the CPU. The start of the title of the code reflects this. 
 
-For the GPU version, the following libraries are additionally needed.
+This version of the code also uses JAX. You can either use JAX with your CPU or with your GPU, depending on how you install it. See https://docs.jax.dev/en/latest/installation.html#supported-platforms
+* JAX 
 
-* Cupy, for the installation see: https://docs.cupy.dev/en/stable/install.html
-* Numba, for the installation see: https://numba.pydata.org/
-
-  
-We use Cupy to do calculations on the GPU; it is essentially numpy except it works on the GPU, using CUDA. 
-We use Numba for JIT compilation.
+JAX supports Just-In-Time compilation, can run on both CPU and GPU depending on what the user wants and can run on a wider range of GPU's than for example Cupy, which only supports Nvidia GPU's. The GPU's that are supported by JAX can be found on the installation page linked above. 
 
 # Advantages:
-* FFT's are implemented using Cupy, allowing us to use the GPU to compute them. This speeds up the code by a lot.
+* FFT's are implemented using JAX, allowing us to use the GPU to compute them. This speeds up the code by a lot.
 * Conversion between particles and the mass density or acceleration on the grid has been parallelised and Just-In-Time (JIT) compiled, meaning that high particle numbers can be simulated faster.
 * Algorithm has complexity N log(N)+n for N cells and n particles
   
@@ -50,7 +45,6 @@ We use Numba for JIT compilation.
 
 #  Work in progress:
 Numerical:
-* Replace numba library with the jax library and implement JIT compilation for larger parts of the code
 * Using real-to-complex FFT's and half precision, though the latter would also require testing for accuracy.
   
 Inclusion of physical effects:
