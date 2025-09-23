@@ -14,6 +14,7 @@ The method was developed in a paper by P.M. Visser, S.W.H. Eijt and J.V. de Nijs
 
 **Both .py files are needed, JAXMONDPMESH.py and ExampleSystems.py. Furthermore, if you change their filenames, you should also change the name where they are imported, which is in the first few lines of both files.**
 
+**If you run the code in a Python kernel, for example with Jupyter Notebook, note that you have to restart the kernel everytime you make changes to the Particlelist class, as it is only imported the first time the kernel is asked to import it** 
 
 Please message me if you find any errors or bugs.
 
