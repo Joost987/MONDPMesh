@@ -12,6 +12,8 @@ Their theses can be found here:
 
 The method was developed in a paper by P.M. Visser, S.W.H. Eijt and J.V. de Nijs: 	https://doi.org/10.1051/0004-6361/202347830. Note that the code used in the paper is the code in Joost's branch. The code in this branch is an improved version.
 
+**Both .py files are needed, JAXMONDPMESH.py and ExampleSystems.py. Furthermore, if you change their filenames, you should also change the name where they are imported, which is in the first few lines of both files.**
+
 
 Please message me if you find any errors or bugs.
 
