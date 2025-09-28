@@ -1,3 +1,5 @@
+**This is an experimental branch, meaning it might contain more bugs than the main branch.**
+
 # MONDPMesh
 Python N-body code made for MOND simulations.
 
