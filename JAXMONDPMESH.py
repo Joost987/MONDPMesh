@@ -31,6 +31,10 @@ a0 = 1.2*10**(-10) # m/s^2
 a0 = 0.7978 # au/kyr^2
 a0 = 12.614 #ly/Myr^2
 
+CheckBoundary=True #This boolean determines if the code bothers checking if a particle exists the grid
+                    #If you know this will not happen, you can turn it off to speed up the code
+                    #If a particle crosses the boundary of the grid while this boolean is False, the code gives an error
+                    #hence if particles might exit the grid, this should be True
 
 EFE_on = False #External field effect on or off
 EFE_M_strength = 1 * a0  # au/kyr^2
@@ -50,6 +54,7 @@ regime = 3 #Which interpolation function should be used? Regime 2,3 don't work c
 # These are therefore calculated using a Newton Raphson method, which is of course slower than using an elementary function 
 #For regime 2, the gravitational energy calculation has not been implemented, and EGrav=0 is used everywhere.
 MAXNR_ITERATIONS=10 #ONLY USED FOR REGIME=2 OR REGIME=3. Maximum number of iterations the Newton-Rhapson solver does. 
+
 
 c = 4*jnp.pi*G
 shape = (2*halfpixels,2*halfpixels,2*halfpixels)
@@ -283,7 +288,6 @@ class Particlelist:
         EMat = jnp.zeros([timesteps], dtype=datatype)
 
         accnew,Egrav,Epot = self.UpdateAccsMOND(self.list,EFE, iterlen=4, regime=regime)
-
         #Jax arrays are immutable, and therefore are copied to a new array when altered.
         #By using JIT, these copy operations should be removed
         @jax.jit 
@@ -314,19 +318,28 @@ class Particlelist:
             accold = accnew
             self.list=self.list.at[:, 1:4].add( self.list[:,
                                  4:7] * dt + 0.5 * accold * cellleninv * dt ** 2 ) # Leapfrog without half integer time steps
+            if CheckBoundary:
+                self.list=CheckBoundaries(self.list)
 
-            try:  # If the particles are outside of the grid this will raise an error. This catches this error
-                # and breaks the loop, ensuring that the data from before the error can be returned.
                 accnew,Egrav,Epot = self.UpdateAccsMOND(self.list,EFE, iterlen=itersteps, regime=regime)
-
 
                 if allowNewtonCorrections:
                     # TODO: explain the 0.99.
                     accnew = self.NewtonCorrection(self.list, accnew, regime, 0.99, 1)
-            except:  # different ways of handling this exception can be made. For the isothermal sphere for example
-                # the particles will enter
-                print("particle outside box")
-                break
+            else:
+                try:  # If the particles are outside of the grid this will raise an error. This catches this error
+                    # and breaks the loop, ensuring that the data from before the error can be returned.
+
+                    accnew,Egrav,Epot = self.UpdateAccsMOND(self.list,EFE, iterlen=itersteps, regime=regime)
+
+                    if allowNewtonCorrections:
+                        # TODO: explain the 0.99.
+                        accnew = self.NewtonCorrection(self.list, accnew, regime, 0.99, 1)
+                except:  # different ways of handling this exception can be made. For the isothermal sphere for example
+                    # the particles will enter
+                    print("particle outside box")
+                    break
+        
             self.list=self.list.at[:, 4:7].add( (accold + accnew) * 0.5 * dt * cellleninv)
 
 
@@ -336,6 +349,16 @@ class Particlelist:
 
 # %% Functions
 
+@jax.jit
+def CheckBoundaries(particlelist): #Set particles that exit the boundary to have 0 mass and 0 velocity, so that they don't affect 
+    #the simulation anymore
+    cond_func=lambda arr: jnp.logical_or(arr<0,arr>2*halfpixels)
+    condition=jnp.logical_or(cond_func(particlelist[:,1]),jnp.logical_or(cond_func(particlelist[:,2]), cond_func(particlelist[:,3])))
+    
+    mask=~condition
+    particlelist=particlelist.at[:,0].set(particlelist[:,0]*mask)
+    particlelist=particlelist.at[:,4:].set(particlelist[:,4:]*mask[:,None])
+    return particlelist
 # Mondian acceleration between two bodies
 def Body2MOND(x, y, m1, m2):
     M = m1 + m2
@@ -527,7 +550,7 @@ def MainLoop(H, NDacc, func, EFE):  # This is the iteration loop. This calculate
     # func refers to which interpolation function should be used.
     F = NDacc + H
     del H
-    gM = inpolinv(jnp.linalg.norm(F, axis=0) / a0, func) * F  # might divide by zero
+    gM = jnp.nan_to_num(inpolinv(jnp.linalg.norm(F, axis=0) / a0, func)) * F  # if F=0 somewhere, inpolinv(F)=nan, so we use nan to num to set this to 0
     del F
     gM2 = CurlFreeProj(gM[0], gM[1], gM[2])
     del gM
@@ -551,6 +574,7 @@ Kz = jnp.arange(-halfpixels, halfpixels, dtype=datatype) ** 2
 K2 = Kx + Ky + Kz
 del Kx, Ky, Kz
 K2 = jnp.roll(K2, halfpixels, axis=0)
+
 K2 = jnp.roll(K2, halfpixels, axis=1)
 K2 = jnp.roll(K2, halfpixels, axis=2)
 K2=K2.at[0, 0, 0].set(1)
@@ -577,10 +601,12 @@ if __name__=="__main__":
     # 2 is by keeping the center of mass in the middle (was used in simulations), 3 is static system but each timestep the particles are placed back to the origin (not sure if correct).
 
 
-        m1, rx1, ry1, rz1, vx1, vy1, vz1 = 10, halfpixels * 6 / 8, halfpixels, halfpixels, halfpixels, halfpixels, 0
-        m2, rx2, ry2, rz2, vx2, vy2, vz2 = 20, halfpixels * 9 / 8, halfpixels, halfpixels, -halfpixels, -halfpixels, 0
-        
+        #m1, rx1, ry1, rz1, vx1, vy1, vz1 = 10, halfpixels * 6 / 8, halfpixels, halfpixels, halfpixels/(100*dt), 0, 0
+        #m2, rx2, ry2, rz2, vx2, vy2, vz2 = 20, halfpixels * 9 / 8, halfpixels, halfpixels, -halfpixels/(100*dt),0, 0
+        m1=10
+        m2=20
         particlelist = TwoBodyCircparticlelist(m1,m2,0.5*halfpixels,0)
+       # particlelist= Particlelist([[m1,rx1,ry1,rz1,vx1,vy1,vz1]]) #Use this to test 1 particle sim
 
         posmat, vecmat, accmat,AngMat, MomMat, EkinMat, EgravMat, EMat, COM= particlelist.TimeSim(timesteps, dt, itersteps, EFE_M, free_fall, regime)
 
